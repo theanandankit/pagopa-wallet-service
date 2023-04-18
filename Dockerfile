@@ -1,23 +1,34 @@
-#
-# Build
-#
-FROM maven:3.8.4-jdk-11-slim as buildtime
-WORKDIR /build
-COPY . .
-RUN mvn clean package
+FROM eclipse-temurin:17-alpine as build
+WORKDIR /workspace/app
 
+COPY gradlew .
+COPY gradle gradle
+COPY build.gradle .
+COPY settings.gradle .
 
-FROM adoptopenjdk/openjdk11:alpine-jre as builder
-COPY --from=buildtime /build/target/*.jar application.jar
-RUN java -Djarmode=layertools -jar application.jar extract
+COPY src src
+COPY api-spec api-spec
+COPY eclipse-style.xml eclipse-style.xml
+RUN ./gradlew build
+RUN mkdir build/extracted && java -Djarmode=layertools -jar build/libs/*.jar extract --destination build/extracted
 
+FROM eclipse-temurin:17-alpine
 
-FROM ghcr.io/pagopa/docker-base-springboot-openjdk11:v1.0.1@sha256:bbbe948e91efa0a3e66d8f308047ec255f64898e7f9250bdb63985efd3a95dbf
-COPY --chown=spring:spring  --from=builder dependencies/ ./
-COPY --chown=spring:spring  --from=builder snapshot-dependencies/ ./
-# https://github.com/moby/moby/issues/37965#issuecomment-426853382
+RUN addgroup --system user && adduser --ingroup user --system user
+USER user:user
+
+WORKDIR /app/
+
+ARG EXTRACTED=/workspace/app/build/extracted
+
+COPY --from=build --chown=user ${EXTRACTED}/dependencies/ ./
 RUN true
-COPY --chown=spring:spring  --from=builder spring-boot-loader/ ./
-COPY --chown=spring:spring  --from=builder application/ ./
+COPY --from=build --chown=user ${EXTRACTED}/spring-boot-loader/ ./
+RUN true
+COPY --from=build --chown=user ${EXTRACTED}/snapshot-dependencies/ ./
+RUN true
+COPY --from=build --chown=user ${EXTRACTED}/application/ ./
+RUN true
 
-EXPOSE 8080
+ENTRYPOINT ["java","--enable-preview","org.springframework.boot.loader.JarLauncher"]
+

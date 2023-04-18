@@ -1,224 +1,97 @@
-# Only manual triggers
-trigger: none
-pr: none
-
-pool:
-  vmImage: 'ubuntu-22.04'
+# Deploy to Azure Kubernetes Service:
+# - DEV
+# - UAT -> PROD
+# Build and push image to Azure Container Registry; Deploy to Azure Kubernetes Service
+# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
 
 parameters:
-  - name: ENV
-    displayName: Target Environment
-    type: string
-    default: dev
+  - name: 'DEV_DEPLOY'
+    displayName: 'DEV deployment without release'
+    type: boolean
+    default: True
     values:
-      - dev
-      - uat
-      - prod
-  - name: SEMVER
-    displayName: "When packing a release, define the version bump to apply. Use only buildNumber or skip for manual deployment"
+      - False
+      - True
+
+  - name: 'RELEASE_CHART_SEMVER'
+    displayName: 'When upgrading helm chart, define the version bump to apply'
     type: string
     values:
       - major
       - minor
       - patch
-      - buildNumber
-      - skip
-    default: skip
+      - none
+    default: none
+
   - name: "FORCE_REPLACE_DOCKER_IMAGE"
-    displayName: "Force the existing docker image to be replaced"
+    displayName: "Force the existing docker image to be replaced (latest tag)"
     type: boolean
     default: False
     values:
       - False
       - True
-  - name: TEST
-    displayName: Run integration/smoke tests
+
+  - name: "SKIP_RELEASE"
+    displayName: "Skip release"
     type: boolean
-    default: true
-
-variables:
-  imageRepository: '$(IMAGE_REPOSITORY_NAME)'
-  nameSpace: '$(K8S_NAMESPACE)'
-
-  ${{ if eq(parameters['ENV'], 'dev') }}:
-    dockerRegistryServiceConnection: $(DEV_CONTAINER_REGISTRY_SERVICE_CONN)
-    dockerRegistryFqdn: $(DEV_CONTAINER_NAMESPACE)
-    kubernetesServiceConnection: '$(DEV_KUBERNETES_SERVICE_CONN)'
-    poolImage: 'pagopa-dev-linux'
-    appInsightsServiceConn: "$(TF_APPINSIGHTS_SERVICE_CONN_DEV)"
-    appInsightsResourceId: "$(TF_APPINSIGHTS_RESOURCE_ID_DEV)"
-    API_SUBSCRIPTION_KEY: $(DEV_API_SUBSCRIPTION_KEY)
-  ${{ if eq(parameters['ENV'], 'uat') }}:
-    dockerRegistryServiceConnection: $(UAT_CONTAINER_REGISTRY_SERVICE_CONN)
-    dockerRegistryFqdn: $(UAT_CONTAINER_NAMESPACE)
-    kubernetesServiceConnection: '$(UAT_KUBERNETES_SERVICE_CONN)'
-    poolImage: 'pagopa-uat-linux'
-    appInsightsServiceConn: "$(TF_APPINSIGHTS_SERVICE_CONN_UAT)"
-    appInsightsResourceId: "$(TF_APPINSIGHTS_RESOURCE_ID_UAT)"
-    API_SUBSCRIPTION_KEY: $(UAT_API_SUBSCRIPTION_KEY)
-  ${{ if eq(parameters['ENV'], 'prod') }}:
-    dockerRegistryServiceConnection: $(PROD_CONTAINER_REGISTRY_SERVICE_CONN)
-    dockerRegistryFqdn: $(PROD_CONTAINER_NAMESPACE)
-    kubernetesServiceConnection: '$(PROD_KUBERNETES_SERVICE_CONN)'
-    poolImage: 'pagopa-prod-linux'
-    appInsightsServiceConn: "$(TF_APPINSIGHTS_SERVICE_CONN_PROD)"
-    appInsightsResourceId: "$(TF_APPINSIGHTS_RESOURCE_ID_PROD)"
-
-  ${{ if eq(variables['Build.SourceBranchName'], 'merge') }}:
-    sourceBranch: "main" # force to main branch
-  ${{ if ne(variables['Build.SourceBranchName'], 'merge') }}:
-    sourceBranch: ${{ variables['Build.SourceBranchName'] }}
-
-
+    default: False
+    values:
+      - False
+      - True
 
 resources:
   repositories:
     - repository: pagopaCommons
       type: github
       name: pagopa/azure-pipeline-templates
-      ref: refs/tags/v3.1.0
+      ref: refs/tags/v2.10.1
       endpoint: 'io-azure-devops-github-ro'
 
+pool:
+  vmImage: ubuntu-latest
+
 stages:
-
-  # Create a release on GitHub
-  - stage: Release
+  - stage: 'Build_for_DEV'
+    displayName: 'Build for DEV deployment'
+    condition: and(succeeded(), eq(${{parameters.DEV_DEPLOY}}, true))
     jobs:
-      - job: make_release
+      - job: Build_docker
+        displayName: Build docker with Build.SourceVersion as TAG
         steps:
-          - checkout: self
-            clean: true
-            persistCredentials: true
-
-          - template: templates/maven-github-release/template.yaml@pagopaCommons
-            parameters:
-              release_branch: $(sourceBranch)
-              gitEmail: $(GIT_EMAIL)
-              gitUsername: $(GIT_USERNAME)
-              gitHubConnection: $(GITHUB_CONNECTION)
-              semver: "${{ parameters.SEMVER }}"
-
-          - template: templates/maven-github-current-version/template.yaml@pagopaCommons
-
-  # Build and Push Docker Image
-  - stage: Build
-    dependsOn: Release
-    variables:
-      current_version: $[ stageDependencies.Release.make_release.outputs['current_version.value'] ]
-    jobs:
-      - job: "build"
-        steps:
-          - checkout: self
-            persistCredentials: true
-
-          - script: |
-              git checkout $(sourceBranch)
-            displayName: Checkout and update branch
-
           - template: templates/docker-release/template.yaml@pagopaCommons
             parameters:
-              CONTAINER_REGISTRY_SERVICE_CONN: $(dockerRegistryServiceConnection)
-              CONTAINER_REGISTRY_FQDN: $(dockerRegistryFqdn)
-              DOCKER_IMAGE_NAME: $(imageRepository)
-              DOCKER_IMAGE_TAG: $(current_version)
+              CONTAINER_REGISTRY_SERVICE_CONN: $(DEV_CONTAINER_REGISTRY_SERVICE_CONN)
+              CONTAINER_REGISTRY_FQDN: $(DEV_CONTAINER_NAMESPACE)
+              DOCKER_IMAGE_NAME: $(K8S_IMAGE_REPOSITORY_NAME)
+              DOCKER_IMAGE_TAG: $(Build.SourceVersion)
               FORCE_REPLACE_DOCKER_IMAGE: ${{ parameters.FORCE_REPLACE_DOCKER_IMAGE }}
-
-  # Testing the docker image
-  - stage: Smoke_Test
-    dependsOn:
-      - Build
-    condition: and(succeeded(), eq('${{ parameters.TEST }}', 'true'))
-    jobs:
-      - job: smoke_tests
-        pool:
-          vmImage: 'ubuntu-18.04'
-        steps:
-          - checkout: self
-            persistCredentials: true
-
-          - script: |
-              git checkout $(sourceBranch)
-            displayName: Checkout and update branch
-
-          - task: Docker@2
-            displayName: "Docker login"
-            inputs:
-              containerRegistry: "$(dockerRegistryServiceConnection)"
-              command: "login"
-
-          - task: Bash@3
-            displayName: 'Run Smoke Tests'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd ./integration-test
-                sh run_integration_test.sh local
-            env:
-              containerRegistry: $(dockerRegistryFqdn)
-
-  # Deploy on K8s with Helm
-  - stage: Deploy
-    condition: and(succeeded('Build'), not(failed('Smoke_Test')))
-    dependsOn:
-      - Release
-      - Build
-      - Smoke_Test
-    variables:
-      deploy_version: $[ stageDependencies.Release.make_release.outputs['current_version.value'] ]
+  - stage: 'Deploy_for_DEV'
+    displayName: 'Deploy DEV'
+    dependsOn: Build_for_DEV
+    condition: and(succeeded(), eq(${{parameters.DEV_DEPLOY}}, true) )
     jobs:
       - deployment: "deploy"
-        pool:
-          name: $(poolImage)
-        environment: ${{ parameters['ENV'] }}
+        environment: 'DEV'
         strategy:
           runOnce:
             deploy:
               steps:
                 - checkout: self
-                  persistCredentials: true
-
-                - script: |
-                    git checkout $(sourceBranch)
-                  displayName: Checkout and update branch
-
-                - template: templates/helm-microservice-chart-setup/template.yaml@pagopaCommons
-                  parameters:
-                    DEPLOY_VERSION: $(deploy_version)
-
-                - template: templates/helm-microservice-chart-deploy/template.yaml@pagopaCommons
+                  displayName: "Checkout"
+                - task: Bash@3
+                  name: update_chart_version
+                  displayName: 'Setup helm microservice chart'
+                  inputs:
+                    targetType: "inline"
+                    script: |
+                      helm repo add microservice-chart https://pagopa.github.io/aks-microservice-chart-blueprint
+                      helm dep build helm
+                - template: azure-templates/helm-microservice-chart-deploy.yml
                   parameters:
                     DO_DEPLOY: true
-                    ENV: ${{ parameters['ENV'] }}
-                    KUBERNETES_SERVICE_CONN: ${{ variables.kubernetesServiceConnection }}
-                    NAMESPACE: $(nameSpace)
-                    APP_NAME: $(imageRepository)
-                    VALUE_FILE: "helm/values-${{ parameters['ENV'] }}.yaml"
-                    DEPLOY_VERSION: $(deploy_version)
-                    APPINSIGHTS_SERVICE_CONN: ${{ variables.appInsightsServiceConn }}
-                    APPINSIGHTS_RESOURCE_ID: ${{ variables.appInsightsResourceId }}
-
-
-  # Run Tests
-  - stage: Integration_Test
-    dependsOn:
-      - Deploy
-    condition: and(and(succeeded(), eq('${{ parameters.TEST }}', 'true')), ne('${{ parameters.ENV }}', 'prod'))
-    jobs:
-      - job: integration_tests
-        steps:
-          - checkout: self
-            persistCredentials: true
-
-          - script: |
-              git checkout $(sourceBranch)
-            displayName: Checkout and update branch
-
-          - task: Bash@3
-            displayName: 'Run Integration Tests'
-            inputs:
-              targetType: 'inline'
-              script: |
-                cd ./integration-test/src
-                export subkey=$(API_SUBSCRIPTION_KEY)
-                yarn install
-                yarn test:${{ parameters.ENV }}
+                    ENV: 'DEV'
+                    KUBERNETES_SERVICE_CONN: $(DEV_KUBERNETES_SERVICE_CONN)
+                    NAMESPACE: wallet
+                    APP_NAME: $(K8S_IMAGE_REPOSITORY_NAME)
+                    VALUE_FILE: "helm/values-dev.yaml"
+                    GREEN_VERSION: $(Build.SourceVersion)
