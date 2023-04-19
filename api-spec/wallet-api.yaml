@@ -1,160 +1,82 @@
 openapi: 3.0.3
 info:
-  title: Wallet - OpenAPI 3.0
+  title: pagoPA Wallet API
+  version: "0.1"
   description: |-
     Wallet
-  termsOfService: http://pagopa.it/terms/
-  contact:
-    email: apiteam@swagger.io
-  license:
-    name: Apache 2.0
-    url: http://www.apache.org/licenses/LICENSE-2.0.html
-  version: 1.0.0
+  termsOfService: https://pagopa.it/terms/
 externalDocs:
-  description: Find out more about Swagger
-  url: http://swagger.io
-servers:
-  - url: https://wallet.pagopa.it/api/v1
-tags:
-  - name: Wallet
-    description: Intercat with wallet
+  description: SANP – Specifiche Attuative del Nodo dei Pagamenti
+  url: https://docs.pagopa.it/sanp/specifiche-attuative-del-nodo-dei-pagamenti-spc/
 paths:
   /wallets:
     post:
       tags:
         - wallets
-      summary: Add a new wallet
-      description: Add a new wallet
-      operationId: addWallet
-      parameters:
-        - in: header
-          name: x-user-id
-          schema:
-            type: string
-          required: true
+      summary: Create a new wallet
+      description: Creates a new wallet
+      operationId: createWallet
       requestBody:
-        description: Create a new wallet
+        description: |-
+          Request body containing the information to create a new wallet.
+          A wallet is a collection of payment instruments that _may_ be associated to a user.
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/WalletPost'
+              $ref: '#/components/schemas/CreateWalletRequest'
         required: true
       responses:
         '200':
-          description: Successful operation
+          description: Wallet created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WalletPostResponse'
+                $ref: '#/components/schemas/CreateWalletResponse'
         '405':
           description: Invalid input
   /wallets/{walletId}:
-    put:
-      tags:
-        - wallets
-      summary: Update an existing wallet
-      description: Update an existing wallet by Id
-      operationId: updateWallet
-      parameters:
-        - name: walletId
-          in: path
-          description: ID of wallet to return
-          required: true
-          schema:
-            type: string
-      requestBody:
-        description: Update an existent wallet
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/WalletUpdate'
-        required: true
-      responses:
-        '200':
-          description: Successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WalletUpdateResponse'
-        '400':
-          description: Invalid ID supplied
-        '404':
-          description: wallet not found
-        '405':
-          description: Validation exception
     get:
       tags:
         - wallets
-      summary: Find wallet by ID
-      description: Returns a single pet
+      summary: Get wallet by id
+      description: Returns a single wallet
       operationId: getWalletById
       parameters:
         - name: walletId
           in: path
-          description: ID of wallet to return
+          description: Id of the wallet to return
           required: true
           schema:
-            type: integer
-            format: int64
+            $ref: "#/components/schemas/WalletId"
       responses:
         '200':
-          description: successful operation
+          description: Wallet retrieved successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WalletUpdateResponse'
+                $ref: '#/components/schemas/WalletInfo'
         '400':
-          description: Invalid ID supplied
+          description: Malformed wallet id supplied
         '404':
-          description: Wallet not found
-    delete:
-      tags:
-        - wallets
-      summary: Deletes a wallet by ID
-      description: delete a wallet
-      operationId: deleteWallet
-      parameters:
-        - name: walletId
-          in: path
-          description: Wallet id to delete
-          required: true
-          schema:
-            type: integer
-            format: int64
-      responses:
-        '200':
-          description: successful operation
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WalletDeleteResponse'
-        '400':
-          description: Invalid ID supplied
-        '404':
-          description: Wallet not found
+          description: Wallet corresponding to the supplied wallet id not found
 components:
   schemas:
-    Wallet:
+    WalletId:
+      type: string
+      format: uuid
+    WalletInfo:
       type: object
       properties:
-        paymentInstrumentId:
-          type: string
-    WalletPost:
+        walletId:
+          $ref: "#/components/schemas/WalletId"
+      required:
+        - walletId
+    CreateWalletRequest:
+      type: object
+    CreateWalletResponse:
       type: object
       properties:
-        paymentInstrumentType:
-          type: string
-          enum: [ cards, paypal, bancomatpay ]
-    WalletPostResponse:
-      type: object
-      properties:
-        walletItemId:
-          type: string
-        logoutURI:
-          type: string
-    WalletUpdate:
-      type: object
-    WalletUpdateResponse:
-      type: object
-    WalletDeleteResponse:
-      type: object
+        walletId:
+          $ref: "#/components/schemas/WalletId"
+      required:
+        - walletId
