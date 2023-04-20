@@ -3,13 +3,14 @@ WORKDIR /workspace/app
 
 COPY gradlew .
 COPY gradle gradle
-COPY build.gradle .
+COPY build.gradle.kts .
 COPY settings.gradle .
 
 COPY src src
 COPY api-spec api-spec
+COPY npg-api npg-api
 COPY eclipse-style.xml eclipse-style.xml
-RUN ./gradlew build
+RUN ./gradlew build -x spotlessCheck
 RUN mkdir build/extracted && java -Djarmode=layertools -jar build/libs/*.jar extract --destination build/extracted
 
 FROM eclipse-temurin:17-alpine
