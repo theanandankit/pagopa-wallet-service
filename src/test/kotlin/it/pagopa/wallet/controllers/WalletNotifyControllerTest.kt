@@ -5,6 +5,7 @@ import it.pagopa.wallet.WalletTestUtils
 import it.pagopa.wallet.exception.BadGatewayException
 import it.pagopa.wallet.exception.ContractIdNotFoundException
 import it.pagopa.wallet.exception.InternalServerErrorException
+import it.pagopa.wallet.exception.SecurityTokenMatchException
 import it.pagopa.wallet.services.WalletService
 import java.util.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -182,12 +183,12 @@ class WalletNotifyControllerTest {
     }
 
     @Test
-    fun `notify return 404 if service raises InternalServerErrorException`() = runTest {
+    fun `notify return 404 if service raises ContractIdNotFoundException`() = runTest {
         /* preconditions */
         val correlationId = UUID.randomUUID()
 
         given(walletService.notify(correlationId, WalletTestUtils.NOTIFY_WALLET_REQUEST_OK))
-            .willThrow(ContractIdNotFoundException("contract-id-test"))
+            .willThrow(ContractIdNotFoundException())
 
         /* test */
         webClient
@@ -204,7 +205,35 @@ class WalletNotifyControllerTest {
                 WalletTestUtils.buildProblemJson(
                     HttpStatus.NOT_FOUND,
                     "Wallet not found",
-                    "Cannot find wallet with contract id contract-id-test"
+                    "Cannot find wallet with specified contract id"
+                )
+            )
+    }
+
+    @Test
+    fun `notify return 401 if service raises ContractIdNotFoundException`() = runTest {
+        /* preconditions */
+        val correlationId = UUID.randomUUID()
+
+        given(walletService.notify(correlationId, WalletTestUtils.NOTIFY_WALLET_REQUEST_OK))
+            .willThrow(SecurityTokenMatchException())
+
+        /* test */
+        webClient
+            .post()
+            .uri("/notify")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("Correlation-id", correlationId.toString())
+            .bodyValue(WalletTestUtils.NOTIFY_WALLET_REQUEST_OK)
+            .exchange()
+            .expectStatus()
+            .isEqualTo(HttpStatus.UNAUTHORIZED)
+            .expectBody(ProblemJsonDto::class.java)
+            .isEqualTo(
+                WalletTestUtils.buildProblemJson(
+                    HttpStatus.UNAUTHORIZED,
+                    "Security token match failed",
+                    "Cannot match Security token"
                 )
             )
     }
