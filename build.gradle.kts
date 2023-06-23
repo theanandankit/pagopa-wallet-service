@@ -27,6 +27,8 @@ tasks.withType<KotlinCompile> { kotlinOptions.jvmTarget = "17" }
 
 repositories { mavenCentral() }
 
+val ecsLoggingVersion = "1.5.0"
+
 dependencyManagement {
   imports { mavenBom("org.springframework.boot:spring-boot-dependencies:3.0.5") }
   imports { mavenBom("com.azure.spring:spring-cloud-azure-dependencies:4.0.0") }
@@ -65,6 +67,9 @@ dependencies {
   implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor")
 
+  // ECS logback encoder
+  implementation("co.elastic.logging:logback-ecs-encoder:$ecsLoggingVersion")
+
   runtimeOnly("org.springframework.boot:spring-boot-devtools")
   testImplementation("org.springframework.boot:spring-boot-starter-test")
   testImplementation("org.mockito:mockito-inline")
@@ -78,7 +83,7 @@ configurations {
   implementation.configure {
     exclude(module = "spring-boot-starter-web")
     exclude("org.apache.tomcat")
-    exclude("ch.qos.logback")
+    exclude(group = "org.slf4j", module = "slf4j-simple")
   }
 }
 // Dependency locking - lock all dependencies
@@ -242,3 +247,9 @@ tasks.jacocoTestReport {
 
   reports { xml.required.set(true) }
 }
+
+/**
+ * Task used to expand application properties with build specific properties such as artifact name
+ * and version
+ */
+tasks.processResources { filesMatching("application.properties") { expand(project.properties) } }
