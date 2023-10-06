@@ -1,7 +1,7 @@
-package it.pagopa.wallet.domain
+package it.pagopa.wallet.domain.wallets.details
 
 import it.pagopa.generated.wallet.model.WalletCardDetailsDto.BrandEnum
-import it.pagopa.wallet.domain.details.CardDetails
+import it.pagopa.wallet.domain.details.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
@@ -10,28 +10,28 @@ class CardDetailsTest {
     private val validBin = "424242"
     val validMaskedPan = "424242******5555"
     val validExpiryDate = "203012"
+    val brand = BrandEnum.MASTERCARD
+    val holderName = "holderName"
     val invalidBin = "42424"
     val invalidMaskedPan = "4242425555"
     val invalidExpiryDate = "12-10"
-    val brand = BrandEnum.MASTERCARD
-    val holderName = "holderName"
-    val contractNumber = "contractNumber"
 
     @Test
     fun `can instantiate a CardDetails from valid bin, maskedPan and expiryDate`() {
 
         val cardDetails =
             CardDetails(
-                bin = validBin,
-                maskedPan = validMaskedPan,
-                expiryDate = validExpiryDate,
+                bin = Bin(validBin),
+                maskedPan = MaskedPan(validMaskedPan),
+                expiryDate = ExpiryDate(validExpiryDate),
                 brand = brand,
-                holderName = holderName
+                holder = CardHolderName(holderName)
             )
 
-        assertEquals(validBin, cardDetails.bin)
-        assertEquals(validMaskedPan, cardDetails.maskedPan)
-        assertEquals(validExpiryDate, cardDetails.expiryDate)
+        assertEquals(validBin, cardDetails.bin.bin)
+        assertEquals(validMaskedPan, cardDetails.maskedPan.maskedPan)
+        assertEquals(validExpiryDate, cardDetails.expiryDate.expDate)
+        assertEquals(cardDetails.type, WalletDetailsType.CARDS)
     }
 
     @Test
@@ -39,11 +39,11 @@ class CardDetailsTest {
 
         assertThrows<IllegalArgumentException> {
             CardDetails(
-                bin = validBin,
-                maskedPan = validMaskedPan,
-                expiryDate = invalidExpiryDate,
+                bin = Bin(validBin),
+                maskedPan = MaskedPan(validMaskedPan),
+                expiryDate = ExpiryDate(invalidExpiryDate),
                 brand = brand,
-                holderName = holderName
+                holder = CardHolderName(holderName)
             )
         }
     }
@@ -53,11 +53,11 @@ class CardDetailsTest {
 
         assertThrows<IllegalArgumentException> {
             CardDetails(
-                bin = validBin,
-                maskedPan = invalidMaskedPan,
-                expiryDate = validExpiryDate,
+                bin = Bin(validBin),
+                maskedPan = MaskedPan(invalidMaskedPan),
+                expiryDate = ExpiryDate(validExpiryDate),
                 brand = brand,
-                holderName = holderName
+                holder = CardHolderName(holderName)
             )
         }
     }
@@ -67,11 +67,11 @@ class CardDetailsTest {
 
         assertThrows<IllegalArgumentException> {
             CardDetails(
-                bin = invalidBin,
-                maskedPan = validMaskedPan,
-                expiryDate = validExpiryDate,
+                bin = Bin(invalidBin),
+                maskedPan = MaskedPan(validMaskedPan),
+                expiryDate = ExpiryDate(validExpiryDate),
                 brand = brand,
-                holderName = holderName
+                holder = CardHolderName(holderName)
             )
         }
     }

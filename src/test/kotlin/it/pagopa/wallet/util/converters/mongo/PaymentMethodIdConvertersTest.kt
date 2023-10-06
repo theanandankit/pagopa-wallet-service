@@ -1,19 +1,19 @@
 package it.pagopa.wallet.util.converters.mongo
 
-import it.pagopa.wallet.domain.wallets.PaymentInstrumentId
+import it.pagopa.wallet.domain.wallets.PaymentMethodId
 import java.util.*
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 
-class PaymentInstrumentIdConvertersTest {
+class PaymentMethodIdConvertersTest {
     @Test
     fun `reading converter converts string to id correctly`() {
         val value = UUID.randomUUID()
         val input = value.toString()
-        val expected = PaymentInstrumentId(value)
+        val expected = PaymentMethodId(value)
 
-        val actual = PaymentInstrumentIdReader.convert(input)
+        val actual = PaymentMethodIdReader.convert(input)
 
         assertEquals(expected, actual)
     }
@@ -22,16 +22,16 @@ class PaymentInstrumentIdConvertersTest {
     fun `reading converter throws IllegalArgumentException on invalid input`() {
         val input = "aaa"
 
-        assertThrows<IllegalArgumentException> { PaymentInstrumentIdReader.convert(input) }
+        assertThrows<IllegalArgumentException> { PaymentMethodIdReader.convert(input) }
     }
 
     @Test
     fun `writing converter converts id to string correctly`() {
         val value = UUID.randomUUID()
-        val input = PaymentInstrumentId(value)
+        val input = PaymentMethodId(value)
         val expected = value.toString()
 
-        val actual = PaymentInstrumentIdWriter.convert(input)
+        val actual = PaymentMethodIdWriter.convert(input)
 
         assertEquals(actual, expected)
     }
