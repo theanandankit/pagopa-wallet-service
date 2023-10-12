@@ -2,8 +2,8 @@ package it.pagopa.wallet.domain.wallets
 
 import it.pagopa.generated.wallet.model.WalletStatusDto
 import it.pagopa.wallet.WalletTestUtils
-import it.pagopa.wallet.domain.common.ServiceStatus
 import it.pagopa.wallet.domain.details.CardDetails
+import it.pagopa.wallet.domain.services.ServiceStatus
 import java.time.Instant
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertDoesNotThrow
@@ -76,12 +76,17 @@ class WalletTest {
                 WalletTestUtils.CONTRACT_ID,
                 CardDetails(
                     WalletTestUtils.BIN,
-                    WalletTestUtils.MASKED_APN,
+                    WalletTestUtils.MASKED_PAN,
                     WalletTestUtils.EXP_DATE,
                     WalletTestUtils.BRAND,
                     WalletTestUtils.HOLDER_NAME
                 )
             )
         }
+    }
+
+    @Test
+    fun `can convert domain object to document`() {
+        assert(WalletTestUtils.WALLET_DOMAIN.toDocument() == WalletTestUtils.WALLET_DOCUMENT)
     }
 }
