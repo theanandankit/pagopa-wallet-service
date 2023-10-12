@@ -31,7 +31,7 @@ data class Wallet(
             this.creationDate.toString(),
             this.updateDate.toString(),
             this.paymentMethodId.value.toString(),
-            this.paymentInstrumentId?.value.toString(),
+            this.paymentInstrumentId?.value?.toString(),
             this.contractId.contractId,
             this.services.map { ls ->
                 it.pagopa.wallet.documents.wallets.WalletService(
