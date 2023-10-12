@@ -38,21 +38,29 @@ object WalletTestUtils {
     private val TYPE = WalletDetailsType.CARDS
     private val TIMESTAMP = Instant.now()
 
-    val WALLET_DOCUMENT_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT: Wallet =
-        Wallet(
+    fun walletDocumentEmptyServicesNullDetailsNoPaymentInstrument(): Wallet {
+        val creationDate = Instant.now().toString()
+        return Wallet(
             WALLET_UUID.value.toString(),
             USER_ID.id.toString(),
+            WalletStatusDto.CREATED.name,
+            creationDate,
+            creationDate,
             PAYMENT_METHOD_ID.value.toString(),
             null,
             CONTRACT_ID.contractId,
             listOf(),
             null
         )
+    }
 
     val WALLET_DOCUMENT_EMPTY_SERVICES_NULL_DETAILS: Wallet =
         Wallet(
             WALLET_UUID.value.toString(),
             USER_ID.id.toString(),
+            WalletStatusDto.CREATED.name,
+            TIMESTAMP.toString(),
+            TIMESTAMP.toString(),
             PAYMENT_METHOD_ID.value.toString(),
             PAYMENT_INSTRUMENT_ID.value.toString(),
             CONTRACT_ID.contractId,
@@ -64,6 +72,9 @@ object WalletTestUtils {
         Wallet(
             WALLET_UUID.value.toString(),
             USER_ID.id.toString(),
+            WalletStatusDto.CREATED.name,
+            TIMESTAMP.toString(),
+            TIMESTAMP.toString(),
             PAYMENT_METHOD_ID.value.toString(),
             PAYMENT_INSTRUMENT_ID.value.toString(),
             CONTRACT_ID.contractId,
@@ -82,6 +93,9 @@ object WalletTestUtils {
         Wallet(
             WALLET_UUID.value.toString(),
             USER_ID.id.toString(),
+            WalletStatusDto.CREATED.name,
+            TIMESTAMP.toString(),
+            TIMESTAMP.toString(),
             PAYMENT_METHOD_ID.value.toString(),
             PAYMENT_INSTRUMENT_ID.value.toString(),
             CONTRACT_ID.contractId,
@@ -108,8 +122,8 @@ object WalletTestUtils {
             WALLET_UUID,
             USER_ID,
             WalletStatusDto.CREATED,
-            Instant.now(),
-            Instant.now(),
+            TIMESTAMP,
+            TIMESTAMP,
             PAYMENT_METHOD_ID,
             PAYMENT_INSTRUMENT_ID,
             listOf(WalletService(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
@@ -122,8 +136,8 @@ object WalletTestUtils {
             WALLET_UUID,
             USER_ID,
             WalletStatusDto.CREATED,
-            Instant.now(),
-            Instant.now(),
+            TIMESTAMP,
+            TIMESTAMP,
             PAYMENT_METHOD_ID,
             PAYMENT_INSTRUMENT_ID,
             listOf(WalletService(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
@@ -145,19 +159,21 @@ object WalletTestUtils {
             null
         )
 
-    val WALLET_DOMAIN_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT =
-        Wallet(
+    fun walletDomainEmptyServicesNullDetailsNoPaymentInstrument():
+        it.pagopa.wallet.domain.wallets.Wallet {
+        return Wallet(
             WALLET_UUID,
             USER_ID,
             WalletStatusDto.CREATED,
-            TIMESTAMP,
-            TIMESTAMP,
+            Instant.now(),
+            Instant.now(),
             PAYMENT_METHOD_ID,
             null,
             listOf(),
             CONTRACT_ID,
             null
         )
+    }
 
     val SERVICE_DOCUMENT: Service =
         Service(

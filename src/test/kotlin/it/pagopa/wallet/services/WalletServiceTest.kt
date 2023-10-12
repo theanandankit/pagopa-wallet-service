@@ -1,73 +1,186 @@
 package it.pagopa.wallet.services
 
-import io.mockk.every
-import io.mockk.mockkStatic
-import io.mockk.unmockkStatic
-import it.pagopa.generated.wallet.model.WalletStatusDto
 import it.pagopa.wallet.WalletTestUtils.CONTRACT_ID
 import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID
 import it.pagopa.wallet.WalletTestUtils.SERVICE_NAME
 import it.pagopa.wallet.WalletTestUtils.USER_ID
-import it.pagopa.wallet.WalletTestUtils.WALLET_DOCUMENT_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT
-import it.pagopa.wallet.WalletTestUtils.WALLET_DOMAIN_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT
+import it.pagopa.wallet.WalletTestUtils.WALLET_DOCUMENT
+import it.pagopa.wallet.WalletTestUtils.WALLET_DOMAIN
 import it.pagopa.wallet.WalletTestUtils.WALLET_UUID
+import it.pagopa.wallet.WalletTestUtils.walletDocumentEmptyServicesNullDetailsNoPaymentInstrument
+import it.pagopa.wallet.WalletTestUtils.walletDomainEmptyServicesNullDetailsNoPaymentInstrument
 import it.pagopa.wallet.audit.LoggedAction
 import it.pagopa.wallet.audit.WalletAddedEvent
+import it.pagopa.wallet.audit.WalletPatchEvent
+import it.pagopa.wallet.documents.wallets.Wallet
+import it.pagopa.wallet.domain.services.ServiceStatus
+import it.pagopa.wallet.exception.WalletNotFoundException
 import it.pagopa.wallet.repositories.WalletRepository
+import java.time.Instant
 import java.util.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.reactor.mono
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import org.mockito.kotlin.any
-import org.mockito.kotlin.given
-import org.mockito.kotlin.mock
+import org.mockito.Mockito
+import org.mockito.Mockito.mockStatic
+import org.mockito.kotlin.*
+import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class WalletServiceTest {
     private val walletRepository: WalletRepository = mock()
 
     private val walletService: WalletService = WalletService(walletRepository)
 
+    private val mockedUUID = UUID.randomUUID()
+    private val mockedInstant = Instant.now()
+
     @Test
     fun `should save wallet document`() {
         /* preconditions */
 
-        val mockedUUID = UUID.randomUUID()
-        mockkStatic(UUID::class)
-        every { UUID.randomUUID() }.answers { mockedUUID }
+        val mockedUUID = WALLET_UUID.value
+        val mockedInstant = Instant.now()
 
-        val expectedLoggedAction =
-            LoggedAction(
-                WALLET_DOMAIN_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT,
-                WalletAddedEvent(WALLET_UUID.value.toString())
-            )
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
-        given { walletRepository.save(any()) }
-            .willReturn(mono { WALLET_DOCUMENT_EMPTY_SERVICES_NULL_DETAILS_NO_PAYMENT_INSTRUMENT })
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val expectedLoggedAction =
+                    LoggedAction(
+                        walletDomainEmptyServicesNullDetailsNoPaymentInstrument(),
+                        WalletAddedEvent(WALLET_UUID.value.toString())
+                    )
+
+                given { walletRepository.save(any()) }.willAnswer { Mono.just(it.arguments[0]) }
+
+                /* test */
+
+                StepVerifier.create(
+                        walletService.createWallet(
+                            listOf(SERVICE_NAME),
+                            USER_ID.id,
+                            PAYMENT_METHOD_ID.value,
+                            CONTRACT_ID.contractId
+                        )
+                    )
+                    .expectNext(expectedLoggedAction)
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should patch wallet document when adding services`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                print("Mocked instant: ${Instant.now()} $mockedInstant")
+
+                val wallet = walletDomainEmptyServicesNullDetailsNoPaymentInstrument()
+                val walletDocumentEmptyServicesNullDetailsNoPaymentInstrument =
+                    walletDocumentEmptyServicesNullDetailsNoPaymentInstrument()
+
+                val expectedLoggedAction =
+                    LoggedAction(wallet, WalletPatchEvent(WALLET_UUID.value.toString()))
+
+                val walletArgumentCaptor: KArgumentCaptor<Wallet> = argumentCaptor<Wallet>()
+
+                given { walletRepository.findById(any<String>()) }
+                    .willReturn(
+                        Mono.just(walletDocumentEmptyServicesNullDetailsNoPaymentInstrument)
+                    )
+
+                given { walletRepository.save(walletArgumentCaptor.capture()) }
+                    .willAnswer { Mono.just(it.arguments[0]) }
+
+                /* test */
+                assertTrue(wallet.services.isEmpty())
+
+                StepVerifier.create(
+                        walletService.patchWallet(
+                            WALLET_UUID.value,
+                            Pair(SERVICE_NAME, ServiceStatus.ENABLED)
+                        )
+                    )
+                    .expectNext(expectedLoggedAction)
+                    .verifyComplete()
+
+                val walletDocumentToSave = walletArgumentCaptor.firstValue
+                assertEquals(walletDocumentToSave.services.size, 1)
+            }
+        }
+    }
+
+    @Test
+    fun `should patch wallet document editing service status`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val expectedLoggedAction =
+                    LoggedAction(WALLET_DOMAIN, WalletPatchEvent(WALLET_UUID.value.toString()))
+
+                val walletArgumentCaptor: KArgumentCaptor<Wallet> = argumentCaptor<Wallet>()
+
+                given { walletRepository.findById(any<String>()) }
+                    .willReturn(Mono.just(WALLET_DOCUMENT))
+
+                given { walletRepository.save(walletArgumentCaptor.capture()) }
+                    .willReturn(Mono.just(WALLET_DOCUMENT))
+
+                /* test */
+                assertEquals(WALLET_DOCUMENT.services.size, 1)
+                assertEquals(WALLET_DOCUMENT.services[0].name, SERVICE_NAME.name)
+                assertEquals(WALLET_DOCUMENT.services[0].status, ServiceStatus.DISABLED.toString())
+
+                StepVerifier.create(
+                        walletService.patchWallet(
+                            WALLET_UUID.value,
+                            Pair(SERVICE_NAME, ServiceStatus.ENABLED)
+                        )
+                    )
+                    .expectNext(expectedLoggedAction)
+                    .verifyComplete()
+
+                val walletDocumentToSave = walletArgumentCaptor.firstValue
+                assertEquals(walletDocumentToSave.services.size, 1)
+                assertEquals(walletDocumentToSave.services[0].name, SERVICE_NAME.name)
+                assertEquals(
+                    walletDocumentToSave.services[0].status,
+                    ServiceStatus.ENABLED.toString()
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `should throws wallet not found exception`() {
+        /* preconditions */
+
+        given { walletRepository.findById(any<String>()) }.willReturn(Mono.empty())
 
         /* test */
 
         StepVerifier.create(
-                walletService.createWallet(
-                    listOf(SERVICE_NAME),
-                    USER_ID.id,
-                    PAYMENT_METHOD_ID.value,
-                    CONTRACT_ID.contractId
+                walletService.patchWallet(
+                    WALLET_UUID.value,
+                    Pair(SERVICE_NAME, ServiceStatus.ENABLED)
                 )
             )
-            .expectNextMatches {
-                expectedLoggedAction.data.id == WALLET_UUID &&
-                    expectedLoggedAction.data.userId == USER_ID &&
-                    expectedLoggedAction.data.services.isEmpty() &&
-                    expectedLoggedAction.data.status == WalletStatusDto.CREATED &&
-                    expectedLoggedAction.data.contractId == CONTRACT_ID &&
-                    expectedLoggedAction.data.details == null &&
-                    expectedLoggedAction.data.paymentInstrumentId == null &&
-                    expectedLoggedAction.data.paymentMethodId == PAYMENT_METHOD_ID
-            }
-            .verifyComplete()
-
-        unmockkStatic(UUID::class)
+            .expectError(WalletNotFoundException::class.java)
+            .verify()
     }
 }

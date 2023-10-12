@@ -3,6 +3,7 @@ package it.pagopa.wallet.controllers
 import it.pagopa.generated.wallet.api.WalletsApi
 import it.pagopa.generated.wallet.model.*
 import it.pagopa.wallet.domain.services.ServiceName
+import it.pagopa.wallet.domain.services.ServiceStatus
 import it.pagopa.wallet.repositories.LoggingEventRepository
 import it.pagopa.wallet.services.WalletService
 import java.net.URI
@@ -47,10 +48,22 @@ class WalletController(
             .map { ResponseEntity.created(URI.create(it.redirectUrl)).body(it) }
     }
 
+    /*
+     * @formatter:off
+     *
+     * Warning kotlin:S6508 - "Unit" should be used instead of "Void"
+     * Suppressed because controller interface is generated from openapi descriptor as java code which use Void as return type.
+     * Wallet interface is generated using java generator of the following issue with
+     * kotlin generator https://github.com/OpenAPITools/openapi-generator/issues/14949
+     *
+     * @formatter:on
+     */
+    @SuppressWarnings("kotlin:S6508")
     override fun deleteWalletById(
         walletId: UUID,
-        exchange: ServerWebExchange?
+        exchange: ServerWebExchange
     ): Mono<ResponseEntity<Void>> {
+        // TODO To be implemented
         return mono { ResponseEntity.noContent().build() }
     }
 
@@ -58,18 +71,41 @@ class WalletController(
         walletId: UUID,
         exchange: ServerWebExchange
     ): Mono<ResponseEntity<WalletInfoDto>> {
+        // TODO To be implemented
         return mono { ResponseEntity.ok().build() }
     }
 
     override fun getWalletsByIdUser(exchange: ServerWebExchange): Mono<ResponseEntity<WalletsDto>> {
+        // TODO To be implemented
         return mono { ResponseEntity.ok().build() }
     }
 
+    /*
+     * @formatter:off
+     *
+     * Warning kotlin:S6508 - "Unit" should be used instead of "Void"
+     * Suppressed because controller interface is generated from openapi descriptor as java code which use Void as return type.
+     * Wallet interface is generated using java generator of the following issue with
+     * kotlin generator https://github.com/OpenAPITools/openapi-generator/issues/14949
+     *
+     * @formatter:on
+     */
+    @SuppressWarnings("kotlin:S6508")
     override fun patchWalletById(
         walletId: UUID,
         patchServiceDto: Flux<PatchServiceDto>,
-        exchange: ServerWebExchange?
+        exchange: ServerWebExchange
     ): Mono<ResponseEntity<Void>> {
-        return mono { ResponseEntity.noContent().build() }
+
+        return patchServiceDto
+            .flatMap {
+                walletService.patchWallet(
+                    walletId,
+                    Pair(ServiceName(it.name.name), ServiceStatus.valueOf(it.status.value))
+                )
+            }
+            .flatMap { it.saveEvents(loggingEventRepository) }
+            .collectList()
+            .map { ResponseEntity.noContent().build() }
     }
 }
