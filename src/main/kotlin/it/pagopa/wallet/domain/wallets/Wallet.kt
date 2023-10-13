@@ -19,7 +19,7 @@ data class Wallet(
     var updateDate: Instant,
     val paymentMethodId: PaymentMethodId,
     val paymentInstrumentId: PaymentInstrumentId?,
-    val services: List<WalletService>,
+    val applications: List<Application>,
     val contractId: ContractId,
     val details: WalletDetails<*>?
 ) {
@@ -33,12 +33,12 @@ data class Wallet(
             this.paymentMethodId.value.toString(),
             this.paymentInstrumentId?.value?.toString(),
             this.contractId.contractId,
-            this.services.map { ls ->
-                it.pagopa.wallet.documents.wallets.WalletService(
-                    ls.id.id.toString(),
-                    ls.name.name,
-                    ls.status.name,
-                    ls.lastUpdate.toString()
+            this.applications.map { app ->
+                it.pagopa.wallet.documents.wallets.Application(
+                    app.id.id.toString(),
+                    app.name.name,
+                    app.status.name,
+                    app.lastUpdate.toString()
                 )
             },
             this.details?.toDocument()

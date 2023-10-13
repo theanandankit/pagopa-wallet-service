@@ -65,11 +65,13 @@ class WalletService(@Autowired private val walletRepository: WalletRepository) {
         wallet: it.pagopa.wallet.documents.wallets.Wallet,
         dataService: Pair<ServiceName, ServiceStatus>
     ): it.pagopa.wallet.documents.wallets.Wallet {
-        val updatedServiceList = wallet.services.toMutableList()
-        when (val index = wallet.services.indexOfFirst { s -> s.name == dataService.first.name }) {
+        val updatedServiceList = wallet.applications.toMutableList()
+        when (
+            val index = wallet.applications.indexOfFirst { s -> s.name == dataService.first.name }
+        ) {
             -1 ->
                 updatedServiceList.add(
-                    it.pagopa.wallet.documents.wallets.WalletService(
+                    it.pagopa.wallet.documents.wallets.Application(
                         UUID.randomUUID().toString(),
                         dataService.first.name,
                         dataService.second.name,
@@ -79,7 +81,7 @@ class WalletService(@Autowired private val walletRepository: WalletRepository) {
             else -> {
                 val oldWalletService = updatedServiceList[index]
                 updatedServiceList[index] =
-                    it.pagopa.wallet.documents.wallets.WalletService(
+                    it.pagopa.wallet.documents.wallets.Application(
                         oldWalletService.id,
                         oldWalletService.name,
                         dataService.second.name,
@@ -87,6 +89,6 @@ class WalletService(@Autowired private val walletRepository: WalletRepository) {
                     )
             }
         }
-        return wallet.setServices(updatedServiceList)
+        return wallet.setApplications(updatedServiceList)
     }
 }

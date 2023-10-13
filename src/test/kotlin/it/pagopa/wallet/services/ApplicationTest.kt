@@ -27,7 +27,7 @@ import org.mockito.kotlin.*
 import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 
-class WalletServiceTest {
+class ApplicationTest {
     private val walletRepository: WalletRepository = mock()
 
     private val walletService: WalletService = WalletService(walletRepository)
@@ -103,7 +103,7 @@ class WalletServiceTest {
                     .willAnswer { Mono.just(it.arguments[0]) }
 
                 /* test */
-                assertTrue(wallet.services.isEmpty())
+                assertTrue(wallet.applications.isEmpty())
 
                 StepVerifier.create(
                         walletService.patchWallet(
@@ -115,7 +115,7 @@ class WalletServiceTest {
                     .verifyComplete()
 
                 val walletDocumentToSave = walletArgumentCaptor.firstValue
-                assertEquals(walletDocumentToSave.services.size, 1)
+                assertEquals(walletDocumentToSave.applications.size, 1)
             }
         }
     }
@@ -142,9 +142,12 @@ class WalletServiceTest {
                     .willReturn(Mono.just(WALLET_DOCUMENT))
 
                 /* test */
-                assertEquals(WALLET_DOCUMENT.services.size, 1)
-                assertEquals(WALLET_DOCUMENT.services[0].name, SERVICE_NAME.name)
-                assertEquals(WALLET_DOCUMENT.services[0].status, ServiceStatus.DISABLED.toString())
+                assertEquals(WALLET_DOCUMENT.applications.size, 1)
+                assertEquals(WALLET_DOCUMENT.applications[0].name, SERVICE_NAME.name)
+                assertEquals(
+                    WALLET_DOCUMENT.applications[0].status,
+                    ServiceStatus.DISABLED.toString()
+                )
 
                 StepVerifier.create(
                         walletService.patchWallet(
@@ -156,10 +159,10 @@ class WalletServiceTest {
                     .verifyComplete()
 
                 val walletDocumentToSave = walletArgumentCaptor.firstValue
-                assertEquals(walletDocumentToSave.services.size, 1)
-                assertEquals(walletDocumentToSave.services[0].name, SERVICE_NAME.name)
+                assertEquals(walletDocumentToSave.applications.size, 1)
+                assertEquals(walletDocumentToSave.applications[0].name, SERVICE_NAME.name)
                 assertEquals(
-                    walletDocumentToSave.services[0].status,
+                    walletDocumentToSave.applications[0].status,
                     ServiceStatus.ENABLED.toString()
                 )
             }
