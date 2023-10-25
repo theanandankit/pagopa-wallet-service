@@ -13,6 +13,8 @@ import it.pagopa.wallet.domain.services.ServiceName
 import it.pagopa.wallet.domain.services.ServiceStatus
 import it.pagopa.wallet.domain.wallets.*
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.util.*
 import org.springframework.http.HttpStatus
 
@@ -28,7 +30,7 @@ object WalletTestUtils {
 
     val PAYMENT_INSTRUMENT_ID = PaymentInstrumentId(UUID.randomUUID())
 
-    val SERVICE_NAME = ServiceName("TEST_SERVICE_NAME")
+    val SERVICE_NAME = ServiceName("PAGOPA")
 
     val CONTRACT_ID = ContractId("TestContractId")
 
@@ -223,6 +225,24 @@ object WalletTestUtils {
             null
         )
     }
+
+    fun walletInfoDto() =
+        WalletInfoDto()
+            .walletId(WALLET_UUID.value)
+            .status(WalletStatusDto.CREATED)
+            .creationDate(OffsetDateTime.ofInstant(TIMESTAMP, ZoneId.systemDefault()))
+            .updateDate(OffsetDateTime.ofInstant(TIMESTAMP, ZoneId.systemDefault()))
+            .paymentMethodId(PAYMENT_METHOD_ID.value.toString())
+            .userId(USER_ID.id.toString())
+            .services(listOf())
+            .details(
+                WalletCardDetailsDto()
+                    .maskedPan(MASKED_PAN.maskedPan)
+                    .bin(BIN.bin)
+                    .brand(WalletCardDetailsDto.BrandEnum.MASTERCARD)
+                    .expiryDate(EXP_DATE.expDate)
+                    .holder(HOLDER_NAME.holderName)
+            )
 
     val SERVICE_DOCUMENT: Service =
         Service(

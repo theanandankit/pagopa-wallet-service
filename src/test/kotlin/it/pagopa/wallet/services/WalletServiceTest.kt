@@ -4,6 +4,7 @@ import it.pagopa.generated.npg.model.CreateHostedOrderRequest
 import it.pagopa.generated.npg.model.Field
 import it.pagopa.generated.npg.model.Fields
 import it.pagopa.generated.npg.model.Order
+import it.pagopa.generated.wallet.model.*
 import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID
 import it.pagopa.wallet.WalletTestUtils.SERVICE_NAME
 import it.pagopa.wallet.WalletTestUtils.USER_ID
@@ -22,12 +23,14 @@ import it.pagopa.wallet.audit.WalletPatchEvent
 import it.pagopa.wallet.client.EcommercePaymentMethodsClient
 import it.pagopa.wallet.client.NpgClient
 import it.pagopa.wallet.documents.wallets.Wallet
+import it.pagopa.wallet.documents.wallets.details.CardDetails
 import it.pagopa.wallet.domain.services.ServiceStatus
 import it.pagopa.wallet.exception.WalletNotFoundException
 import it.pagopa.wallet.repositories.NpgSession
 import it.pagopa.wallet.repositories.NpgSessionsTemplateWrapper
 import it.pagopa.wallet.repositories.WalletRepository
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.*
 import kotlinx.coroutines.reactor.mono
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -36,10 +39,11 @@ import org.junit.jupiter.api.Test
 import org.mockito.Mockito
 import org.mockito.Mockito.mockStatic
 import org.mockito.kotlin.*
+import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 
-class ApplicationTest {
+class WalletServiceTest {
     private val walletRepository: WalletRepository = mock()
     private val ecommercePaymentMethodsClient: EcommercePaymentMethodsClient = mock()
     private val npgClient: NpgClient = mock()
@@ -170,6 +174,111 @@ class ApplicationTest {
 
                 StepVerifier.create(walletService.createSessionWallet(WALLET_UUID.value))
                     .expectNext(Pair(nggFields, expectedLoggedAction))
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should find wallet document`() {
+        /* preconditions */
+
+        val mockedUUID = WALLET_UUID.value
+        val mockedInstant = Instant.now()
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val wallet = WALLET_DOCUMENT
+                val walletInfoDto =
+                    WalletInfoDto()
+                        .walletId(UUID.fromString(wallet.id))
+                        .status(WalletStatusDto.valueOf(wallet.status))
+                        .paymentMethodId(wallet.paymentMethodId)
+                        .paymentInstrumentId(wallet.paymentInstrumentId.let { it.toString() })
+                        .userId(wallet.userId)
+                        .updateDate(OffsetDateTime.parse(wallet.updateDate))
+                        .creationDate(OffsetDateTime.parse(wallet.creationDate))
+                        .services(
+                            wallet.applications.map { application ->
+                                ServiceDto()
+                                    .name(ServiceNameDto.valueOf(application.name))
+                                    .status(ServiceStatusDto.valueOf(application.status))
+                            }
+                        )
+                        .details(
+                            WalletCardDetailsDto()
+                                .type((wallet.details as CardDetails).type)
+                                .bin((wallet.details as CardDetails).bin)
+                                .holder((wallet.details as CardDetails).holder)
+                                .expiryDate((wallet.details as CardDetails).expiryDate)
+                                .maskedPan((wallet.details as CardDetails).maskedPan)
+                        )
+
+                given { walletRepository.findById(any<String>()) }.willAnswer { Mono.just(wallet) }
+
+                /* test */
+
+                StepVerifier.create(walletService.findWallet(WALLET_UUID.value))
+                    .expectNext(walletInfoDto)
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should find wallet document by userId`() {
+        /* preconditions */
+
+        val mockedUUID = USER_ID.id
+        val mockedInstant = Instant.now()
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val wallet = WALLET_DOCUMENT
+                val walletInfoDto =
+                    WalletInfoDto()
+                        .walletId(UUID.fromString(wallet.id))
+                        .status(WalletStatusDto.valueOf(wallet.status))
+                        .paymentMethodId(wallet.paymentMethodId)
+                        .paymentInstrumentId(wallet.paymentInstrumentId.let { it.toString() })
+                        .userId(wallet.userId)
+                        .updateDate(OffsetDateTime.parse(wallet.updateDate))
+                        .creationDate(OffsetDateTime.parse(wallet.creationDate))
+                        .services(
+                            wallet.applications.map { application ->
+                                ServiceDto()
+                                    .name(ServiceNameDto.valueOf(application.name))
+                                    .status(ServiceStatusDto.valueOf(application.status))
+                            }
+                        )
+                        .details(
+                            WalletCardDetailsDto()
+                                .type((wallet.details as CardDetails).type)
+                                .bin((wallet.details as CardDetails).bin)
+                                .holder((wallet.details as CardDetails).holder)
+                                .expiryDate((wallet.details as CardDetails).expiryDate)
+                                .maskedPan((wallet.details as CardDetails).maskedPan)
+                        )
+
+                val walletsDto = WalletsDto().addWalletsItem(walletInfoDto)
+
+                given { walletRepository.findByUserId(USER_ID.id.toString()) }
+                    .willAnswer { Flux.fromIterable(listOf(wallet)) }
+
+                /* test */
+
+                StepVerifier.create(walletService.findWalletByUserId(USER_ID.id))
+                    .expectNext(walletsDto)
                     .verifyComplete()
             }
         }
