@@ -141,6 +141,19 @@ stages:
                     APP_NAME: $(K8S_IMAGE_REPOSITORY_NAME)
                     VALUE_FILE: "helm/values-dev.yaml"
                     GREEN_VERSION: $(Build.SourceVersion)
+  - stage: "API_DEV_test"
+    displayName: 'Running API test on dev app'
+    dependsOn: Deploy_for_DEV
+    jobs:
+      - job: newman_api_test
+        steps:
+          - checkout: pagopaWalletTests
+          - template: azure-templates/api-tests.yml
+            parameters:
+              ENV_FILE: "api-tests/dev.envs.json"
+              TEST_FILE_PREFIX: "dev"
+              API_TEST_FILE: "api-tests/wallet_payment_api.tests.json"
+              WALLET_TOKEN_TEST: $(WALLET_TOKEN_TEST_DEV)
   # --- END Deploy DEV --- #
 
   # --- START Deploy UAT --- #
