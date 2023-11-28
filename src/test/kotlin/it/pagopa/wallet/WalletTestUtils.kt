@@ -109,6 +109,23 @@ object WalletTestUtils {
         )
     }
 
+    fun walletDocumentValidated(): Wallet {
+        val creationDate = Instant.now().toString()
+        return Wallet(
+            WALLET_UUID.value.toString(),
+            USER_ID.id.toString(),
+            WalletStatusDto.VALIDATED.name,
+            creationDate,
+            creationDate,
+            PAYMENT_METHOD_ID_CARDS.value.toString(),
+            null,
+            CONTRACT_ID.contractId,
+            OperationResultEnum.EXECUTED.toString(),
+            listOf(),
+            null
+        )
+    }
+
     fun walletDocumentEmptyServicesNullDetailsNoPaymentInstrument(): Wallet {
         val creationDate = Instant.now().toString()
         return Wallet(
@@ -234,6 +251,51 @@ object WalletTestUtils {
             listOf(Application(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
             CONTRACT_ID,
             OperationResultEnum.EXECUTED,
+            CardDetails(BIN, MASKED_PAN, EXP_DATE, BRAND, HOLDER_NAME)
+        )
+
+    val WALLET_VALIDATION_REQUESTED =
+        Wallet(
+            WALLET_UUID,
+            USER_ID,
+            WalletStatusDto.VALIDATION_REQUESTED,
+            TIMESTAMP,
+            TIMESTAMP,
+            PAYMENT_METHOD_ID_CARDS,
+            PAYMENT_INSTRUMENT_ID,
+            listOf(Application(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
+            CONTRACT_ID,
+            null,
+            CardDetails(BIN, MASKED_PAN, EXP_DATE, BRAND, HOLDER_NAME)
+        )
+
+    val WALLET_VALIDATED =
+        Wallet(
+            WALLET_UUID,
+            USER_ID,
+            WalletStatusDto.VALIDATED,
+            TIMESTAMP,
+            TIMESTAMP,
+            PAYMENT_METHOD_ID_CARDS,
+            PAYMENT_INSTRUMENT_ID,
+            listOf(Application(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
+            CONTRACT_ID,
+            OperationResultEnum.EXECUTED,
+            CardDetails(BIN, MASKED_PAN, EXP_DATE, BRAND, HOLDER_NAME)
+        )
+
+    val WALLET_ERROR =
+        Wallet(
+            WALLET_UUID,
+            USER_ID,
+            WalletStatusDto.ERROR,
+            TIMESTAMP,
+            TIMESTAMP,
+            PAYMENT_METHOD_ID_CARDS,
+            PAYMENT_INSTRUMENT_ID,
+            listOf(Application(SERVICE_ID, SERVICE_NAME, ServiceStatus.DISABLED, TIMESTAMP)),
+            CONTRACT_ID,
+            OperationResultEnum.DECLINED,
             CardDetails(BIN, MASKED_PAN, EXP_DATE, BRAND, HOLDER_NAME)
         )
 

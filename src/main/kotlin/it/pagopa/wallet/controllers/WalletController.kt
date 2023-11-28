@@ -94,6 +94,17 @@ class WalletController(
         return mono { ResponseEntity.noContent().build() }
     }
 
+    override fun getSessionWallet(
+        xUserId: UUID,
+        walletId: UUID,
+        orderId: String,
+        exchange: ServerWebExchange
+    ): Mono<ResponseEntity<SessionWalletRetrieveResponseDto>> {
+        return walletService.findSessionWallet(xUserId, WalletId(walletId), orderId).map {
+            ResponseEntity.ok(it)
+        }
+    }
+
     override fun getWalletById(
         walletId: UUID,
         exchange: ServerWebExchange

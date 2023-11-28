@@ -420,6 +420,47 @@ class WalletService(
             }
     }
 
+    fun findSessionWallet(
+        xUserId: UUID,
+        walletId: WalletId,
+        orderId: String,
+    ): Mono<SessionWalletRetrieveResponseDto> {
+        return mono { npgSessionRedisTemplate.findById(orderId) }
+            .switchIfEmpty { Mono.error(SessionNotFoundException(orderId)) }
+            .flatMap { session ->
+                walletRepository
+                    .findByIdAndUserId(walletId.value.toString(), xUserId.toString())
+                    .switchIfEmpty { Mono.error(WalletNotFoundException(walletId)) }
+                    .filter { wallet -> session.walletId == wallet.id }
+                    .switchIfEmpty {
+                        Mono.error(WalletSessionMismatchException(session.sessionId, walletId))
+                    }
+                    .map { walletDocument -> walletDocument.toDomain() }
+                    .filter { wallet ->
+                        wallet.status == WalletStatusDto.VALIDATION_REQUESTED ||
+                            wallet.status == WalletStatusDto.VALIDATED ||
+                            wallet.status == WalletStatusDto.ERROR
+                    }
+                    .switchIfEmpty { Mono.error(WalletConflictStatusException(walletId)) }
+                    .map { wallet ->
+                        val isFinalStatus =
+                            wallet.status == WalletStatusDto.VALIDATED ||
+                                wallet.status == WalletStatusDto.ERROR
+                        SessionWalletRetrieveResponseDto()
+                            .orderId(orderId)
+                            .walletId(walletId.value.toString())
+                            .isFinalOutcome(isFinalStatus)
+                            .outcome(
+                                if (isFinalStatus)
+                                    wallet.validationOperationResult?.let {
+                                        retrieveFinalOutcome(it)
+                                    }
+                                else null
+                            )
+                    }
+            }
+    }
+
     private fun toWallets(walletList: List<it.pagopa.wallet.documents.wallets.Wallet>): WalletsDto =
         WalletsDto().wallets(walletList.map { toWalletInfoDto(it) })
 
@@ -494,6 +535,33 @@ class WalletService(
     private fun generateNPGUniqueIdentifiers(): Mono<Pair<String, String>> {
         return uniqueIdUtils.generateUniqueId().flatMap { orderId ->
             uniqueIdUtils.generateUniqueId().map { contractId -> orderId to contractId }
+        }
+    }
+
+    /**
+     * The method is used to retrieve the final outcome from validation operation result received
+     * from NPG NUMBER_0 -> SUCCESS NUMBER_1 -> GENERIC_ERROR NUMBER_2 -> AUTH_ERROR NUMBER_4 ->
+     * TIMEOUT NUMBER_8 -> CANCELED_BY_USER
+     *
+     * @param operationResult the operation result used for retrieve outcome
+     * @return Mono<SessionWalletRetrieveResponseDto.OutcomeEnum>
+     */
+    private fun retrieveFinalOutcome(
+        operationResult: WalletNotificationRequestDto.OperationResultEnum
+    ): SessionWalletRetrieveResponseDto.OutcomeEnum {
+        return when (operationResult) {
+            WalletNotificationRequestDto.OperationResultEnum.EXECUTED ->
+                SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_0
+            WalletNotificationRequestDto.OperationResultEnum.CANCELED ->
+                SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_8
+            WalletNotificationRequestDto.OperationResultEnum.THREEDS_VALIDATED,
+            WalletNotificationRequestDto.OperationResultEnum.DENIED_BY_RISK,
+            WalletNotificationRequestDto.OperationResultEnum.THREEDS_FAILED,
+            WalletNotificationRequestDto.OperationResultEnum.DECLINED ->
+                SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_2
+            WalletNotificationRequestDto.OperationResultEnum.PENDING ->
+                SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_4
+            else -> SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_1
         }
     }
 }

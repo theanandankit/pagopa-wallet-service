@@ -356,4 +356,33 @@ class WalletControllerTest {
             .isUnauthorized
             .expectBody()
     }
+
+    @Test
+    fun testFindSessionOKResponse() = runTest {
+        /* preconditions */
+        val xUserId = UUID.randomUUID()
+        val walletId = UUID.randomUUID()
+        val orderId = WalletTestUtils.ORDER_ID
+
+        val findSessionResponseDto =
+            SessionWalletRetrieveResponseDto()
+                .walletId(walletId.toString())
+                .orderId(orderId)
+                .isFinalOutcome(true)
+                .outcome(SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_0)
+
+        given { walletService.findSessionWallet(eq(xUserId), eq(WalletId(walletId)), eq(orderId)) }
+            .willReturn(Mono.just(findSessionResponseDto))
+
+        /* test */
+        webClient
+            .get()
+            .uri("/wallets/${walletId}/sessions/${orderId}")
+            .header("x-user-id", xUserId.toString())
+            .exchange()
+            .expectStatus()
+            .isOk
+            .expectBody()
+            .json(objectMapper.writeValueAsString(findSessionResponseDto))
+    }
 }
