@@ -46,17 +46,17 @@ class WalletController(
                     )
                     .flatMap { (loggedAction, returnUri) ->
                         loggedAction.saveEvents(loggingEventRepository).map {
-                            Triple(it.id.value, request.useDiagnosticTracing, returnUri)
+                            Triple(it.id.value, request, returnUri)
                         }
                     }
             }
-            .map { (walletId, useDiagnosticSettings, returnUri) ->
+            .map { (walletId, request, returnUri) ->
                 WalletCreateResponseDto()
                     .walletId(walletId)
                     .redirectUrl(
                         UriComponentsBuilder.fromUri(returnUri)
                             .fragment(
-                                "walletId=${walletId}&useDiagnosticTracing=${useDiagnosticSettings}"
+                                "walletId=${walletId}&useDiagnosticTracing=${request.useDiagnosticTracing}&paymentMethodId=${request.paymentMethodId}"
                             )
                             .build()
                             .toUriString()
