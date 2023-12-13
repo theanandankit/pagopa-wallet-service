@@ -7,13 +7,16 @@ import it.pagopa.wallet.WalletTestUtils
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_KO_OPERATION_RESULT
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT
 import it.pagopa.wallet.WalletTestUtils.ORDER_ID
+import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID_APM
 import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID_CARDS
 import it.pagopa.wallet.WalletTestUtils.SERVICE_NAME
 import it.pagopa.wallet.WalletTestUtils.USER_ID
 import it.pagopa.wallet.WalletTestUtils.WALLET_UUID
+import it.pagopa.wallet.WalletTestUtils.creationDate
 import it.pagopa.wallet.WalletTestUtils.getUniqueId
 import it.pagopa.wallet.WalletTestUtils.getValidAPMPaymentMethod
 import it.pagopa.wallet.WalletTestUtils.getValidCardsPaymentMethod
+import it.pagopa.wallet.WalletTestUtils.initializedWalletDomainEmptyServicesNullDetailsNoPaymentInstrument
 import it.pagopa.wallet.WalletTestUtils.newWalletDocumentSaved
 import it.pagopa.wallet.WalletTestUtils.walletDocument
 import it.pagopa.wallet.WalletTestUtils.walletDocumentEmptyServicesNullDetailsNoPaymentInstrument
@@ -27,6 +30,7 @@ import it.pagopa.wallet.WalletTestUtils.walletDomainEmptyServicesNullDetailsNoPa
 import it.pagopa.wallet.audit.*
 import it.pagopa.wallet.client.EcommercePaymentMethodsClient
 import it.pagopa.wallet.client.NpgClient
+import it.pagopa.wallet.config.OnboardingReturnUrlConfig
 import it.pagopa.wallet.config.SessionUrlConfig
 import it.pagopa.wallet.documents.wallets.Wallet
 import it.pagopa.wallet.documents.wallets.details.CardDetails
@@ -65,6 +69,11 @@ class WalletServiceTest {
     private val npgClient: NpgClient = mock()
     private val npgSessionRedisTemplate: NpgSessionsTemplateWrapper = mock()
     private val uniqueIdUtils: UniqueIdUtils = mock()
+    private val onboardingReturnUrlConfig =
+        OnboardingReturnUrlConfig(
+            apmReturnUrl = URI.create("http://localhost/onboarding/apm"),
+            cardReturnUrl = URI.create("http://localhost/onboarding/creditcard")
+        )
     private val sessionUrlConfig =
         SessionUrlConfig(
             "http://localhost:1234",
@@ -91,25 +100,23 @@ class WalletServiceTest {
             npgClient,
             npgSessionRedisTemplate,
             sessionUrlConfig,
-            uniqueIdUtils
+            uniqueIdUtils,
+            onboardingReturnUrlConfig
         )
-
-    private val mockedUUID = UUID.randomUUID()
-    private val mockedInstant = Instant.now()
+    private val mockedUUID = WALLET_UUID.value
+    private val mockedInstant = creationDate
 
     @Test
-    fun `should save wallet document`() {
+    fun `should save wallet document for CARDS payment method`() {
         /* preconditions */
 
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use { uuidMockStatic ->
+            uuidMockStatic.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
-        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
-            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
-
-            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
-                print("Mocked instant: $mockedInstant")
-                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use { instantMockStatic ->
+                println("Mocked uuid: $mockedUUID")
+                println("Mocked instant: $mockedInstant")
+                instantMockStatic.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
 
                 val expectedLoggedAction =
                     LoggedAction(
@@ -126,12 +133,60 @@ class WalletServiceTest {
 
                 StepVerifier.create(
                         walletService.createWallet(
-                            listOf(SERVICE_NAME),
-                            USER_ID.id,
-                            PAYMENT_METHOD_ID_CARDS.value
+                            serviceList = listOf(SERVICE_NAME),
+                            userId = USER_ID.id,
+                            paymentMethodId = PAYMENT_METHOD_ID_CARDS.value
                         )
                     )
-                    .expectNext(expectedLoggedAction)
+                    .assertNext { createWalletOutput ->
+                        assertEquals(
+                            Pair(expectedLoggedAction, onboardingReturnUrlConfig.cardReturnUrl),
+                            createWalletOutput
+                        )
+                    }
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should save wallet document for APM payment method`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use { uuidMockStatic ->
+            uuidMockStatic.`when`<Any> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use { instantMockStatic ->
+                println("Mocked uuid: $mockedUUID")
+                println("Mocked instant: $mockedInstant")
+                instantMockStatic.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val expectedLoggedAction =
+                    LoggedAction(
+                        initializedWalletDomainEmptyServicesNullDetailsNoPaymentInstrument()
+                            .copy(paymentMethodId = PAYMENT_METHOD_ID_APM),
+                        WalletAddedEvent(mockedUUID.toString())
+                    )
+
+                given { walletRepository.save(any()) }.willAnswer { Mono.just(it.arguments[0]) }
+                given { ecommercePaymentMethodsClient.getPaymentMethodById(any()) }
+                    .willReturn { Mono.just(getValidAPMPaymentMethod()) }
+
+                /* test */
+
+                StepVerifier.create(
+                        walletService.createWallet(
+                            serviceList = listOf(SERVICE_NAME),
+                            userId = USER_ID.id,
+                            paymentMethodId = PAYMENT_METHOD_ID_APM.value
+                        )
+                    )
+                    .assertNext { createWalletOutput ->
+                        assertEquals(
+                            Pair(expectedLoggedAction, onboardingReturnUrlConfig.apmReturnUrl),
+                            createWalletOutput
+                        )
+                    }
                     .verifyComplete()
             }
         }
@@ -140,8 +195,6 @@ class WalletServiceTest {
     @Test
     fun `should create wallet session`() {
         /* preconditions */
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -283,9 +336,6 @@ class WalletServiceTest {
     fun `should validate wallet with card data`() {
         /* preconditions */
 
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
-
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
@@ -392,9 +442,6 @@ class WalletServiceTest {
     fun `should throw error when validate wallet with APM`() {
         /* preconditions */
 
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
-
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
@@ -448,8 +495,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws SessionNotFoundException`() {
         /* preconditions */
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -473,8 +518,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws WalletNotFoundException`() {
         /* preconditions */
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -505,8 +548,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws WalletSessionMismatchException`() {
         /* preconditions */
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -540,8 +581,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws WalletConflictStatusException`() {
         /* preconditions */
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -572,9 +611,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws BadGatewayException with card data by wrong state`() {
         /* preconditions */
-
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -641,9 +677,6 @@ class WalletServiceTest {
     fun `validate should throws BadGatewayException with card data by fields null`() {
         /* preconditions */
 
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
-
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
@@ -707,9 +740,6 @@ class WalletServiceTest {
     @Test
     fun `validate should throws BadGatewayException with card data by fields list empty`() {
         /* preconditions */
-
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
@@ -778,9 +808,6 @@ class WalletServiceTest {
     fun `validate should throws BadGatewayException with card data by first field src null`() {
         /* preconditions */
 
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
-
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
 
@@ -847,9 +874,6 @@ class WalletServiceTest {
     @Test
     fun `should find wallet document`() {
         /* preconditions */
-
-        val mockedUUID = WALLET_UUID.value
-        val mockedInstant = Instant.now()
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
             it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
