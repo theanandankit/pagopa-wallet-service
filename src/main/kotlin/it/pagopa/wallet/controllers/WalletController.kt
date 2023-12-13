@@ -10,7 +10,6 @@ import it.pagopa.wallet.repositories.LoggingEventRepository
 import it.pagopa.wallet.services.WalletService
 import java.net.URI
 import java.util.*
-import kotlin.collections.map
 import kotlinx.coroutines.reactor.mono
 import lombok.extern.slf4j.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
