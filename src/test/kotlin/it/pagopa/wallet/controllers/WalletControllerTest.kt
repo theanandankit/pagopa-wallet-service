@@ -445,7 +445,7 @@ class WalletControllerTest {
     }
 
     @Test
-    fun testNotifyWallet() = runTest {
+    fun `notify wallet OK for CARDS`() = runTest {
         /* preconditions */
         val walletId = UUID.randomUUID()
         val orderId = WalletTestUtils.ORDER_ID
@@ -566,4 +566,152 @@ class WalletControllerTest {
             .expectBody()
             .json(objectMapper.writeValueAsString(findSessionResponseDto))
     }
+
+    @Test
+    fun `notify wallet OK for PAYPAL`() = runTest {
+        /* preconditions */
+        val walletId = UUID.randomUUID()
+        val orderId = WalletTestUtils.ORDER_ID
+        val sessionToken = "sessionToken"
+        val operationId = "validationOperationId"
+        given {
+                walletService.notifyWallet(
+                    eq(WalletId(walletId)),
+                    eq(orderId),
+                    eq(sessionToken),
+                    any()
+                )
+            }
+            .willReturn(
+                mono {
+                    LoggedAction(
+                        WALLET_DOMAIN,
+                        WalletNotificationEvent(
+                            walletId.toString(),
+                            operationId,
+                            OperationResultEnum.EXECUTED.value,
+                            Instant.now().toString()
+                        )
+                    )
+                }
+            )
+        given { loggingEventRepository.saveAll(any<Iterable<LoggingEvent>>()) }
+            .willReturn(Flux.empty())
+        /* test */
+        webClient
+            .post()
+            .uri("/wallets/${walletId}/sessions/${orderId}/notifications")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("x-user-id", UUID.randomUUID().toString())
+            .header("Authorization", "Bearer $sessionToken")
+            .bodyValue(
+                WalletTestUtils.NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT_WITH_PAYPAL_DETAILS
+            )
+            .exchange()
+            .expectStatus()
+            .isOk
+            .expectBody()
+    }
+
+    @Test
+    fun `notify wallet should return 400 bad request for invalid details`() = runTest {
+        /* preconditions */
+        val walletId = UUID.randomUUID()
+        val orderId = WalletTestUtils.ORDER_ID
+        val sessionToken = "sessionToken"
+        val operationId = "validationOperationId"
+        given {
+                walletService.notifyWallet(
+                    eq(WalletId(walletId)),
+                    eq(orderId),
+                    eq(sessionToken),
+                    any()
+                )
+            }
+            .willReturn(
+                mono {
+                    LoggedAction(
+                        WALLET_DOMAIN,
+                        WalletNotificationEvent(
+                            walletId.toString(),
+                            operationId,
+                            OperationResultEnum.EXECUTED.value,
+                            Instant.now().toString()
+                        )
+                    )
+                }
+            )
+        given { loggingEventRepository.saveAll(any<Iterable<LoggingEvent>>()) }
+            .willReturn(Flux.empty())
+        /* test */
+        webClient
+            .post()
+            .uri("/wallets/${walletId}/sessions/${orderId}/notifications")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("x-user-id", UUID.randomUUID().toString())
+            .header("Authorization", "Bearer $sessionToken")
+            .bodyValue(
+                """
+                {
+                    "timestampOperation" : "2023-11-24T09:16:15.913748361Z",
+                    "operationResult": "EXECUTED",
+                    "operationId": "operationId",
+                    "details": {
+                        "type": "PAYPAL"
+                    }
+                }
+            """
+            )
+            .exchange()
+            .expectStatus()
+            .isBadRequest
+            .expectBody()
+    }
+
+    @Test
+    fun `notify wallet should return 400 bad request when no paypal details are received for paypal wallet`() =
+        runTest {
+            /* preconditions */
+            val walletId = UUID.randomUUID()
+            val orderId = WalletTestUtils.ORDER_ID
+            val sessionToken = "sessionToken"
+            val operationId = "validationOperationId"
+            given {
+                    walletService.notifyWallet(
+                        eq(WalletId(walletId)),
+                        eq(orderId),
+                        eq(sessionToken),
+                        any()
+                    )
+                }
+                .willReturn(
+                    mono {
+                        LoggedAction(
+                            WALLET_DOMAIN.copy(status = WalletStatusDto.ERROR),
+                            WalletNotificationEvent(
+                                walletId.toString(),
+                                operationId,
+                                OperationResultEnum.EXECUTED.value,
+                                Instant.now().toString()
+                            )
+                        )
+                    }
+                )
+            given { loggingEventRepository.saveAll(any<Iterable<LoggingEvent>>()) }
+                .willReturn(Flux.empty())
+            /* test */
+            webClient
+                .post()
+                .uri("/wallets/${walletId}/sessions/${orderId}/notifications")
+                .contentType(MediaType.APPLICATION_JSON)
+                .header("x-user-id", UUID.randomUUID().toString())
+                .header("Authorization", "Bearer $sessionToken")
+                .bodyValue(
+                    WalletTestUtils.NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT_WITH_PAYPAL_DETAILS
+                )
+                .exchange()
+                .expectStatus()
+                .isBadRequest
+                .expectBody()
+        }
 }
