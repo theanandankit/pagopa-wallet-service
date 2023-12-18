@@ -1,6 +1,7 @@
 package it.pagopa.wallet.controllers
 
 import com.fasterxml.jackson.annotation.JsonInclude
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -27,6 +28,7 @@ import java.util.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.reactor.mono
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.mockito.Mockito
@@ -40,6 +42,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.reactive.server.WebTestClient
+import org.springframework.test.web.reactive.server.expectBody
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
 
@@ -114,23 +117,27 @@ class WalletControllerTest {
     }
 
     @Test
-    fun testCreateSessionWallet() = runTest {
+    fun testCreateSessionWalletWithCard() = runTest {
         /* preconditions */
         val walletId = UUID.randomUUID()
         val sessionResponseDto =
             SessionWalletCreateResponseDto()
                 .orderId("W3948594857645ruey")
-                .cardFormFields(
-                    listOf(
-                        FieldDto()
-                            .id(UUID.randomUUID().toString())
-                            .src(URI.create("https://test.it/h"))
-                            .propertyClass("holder")
-                            .propertyClass("h")
-                            .type("type"),
-                    )
+                .sessionData(
+                    SessionWalletCreateResponseCardDataDto()
+                        .paymentMethodType("cards")
+                        .cardFormFields(
+                            listOf(
+                                FieldDto()
+                                    .id(UUID.randomUUID().toString())
+                                    .src(URI.create("https://test.it/h"))
+                                    .propertyClass("holder")
+                                    .propertyClass("h")
+                                    .type("type"),
+                            )
+                        )
                 )
-        given { walletService.createSessionWallet(walletId) }
+        given { walletService.createSessionWallet(eq(walletId), any()) }
             .willReturn(
                 mono {
                     Pair(
@@ -147,12 +154,61 @@ class WalletControllerTest {
             .uri("/wallets/${walletId}/sessions")
             .contentType(MediaType.APPLICATION_JSON)
             .header("x-user-id", UUID.randomUUID().toString())
-            .bodyValue(WalletTestUtils.CREATE_WALLET_REQUEST)
+            .bodyValue(
+                // workaround since this class is the request entrypoint and so discriminator
+                // mapping annotation is not read during serialization
+                ObjectMapper()
+                    .writeValueAsString(SessionInputCardDataDto() as SessionInputDataDto)
+                    .replace("SessionInputCardData", "cards")
+            )
             .exchange()
             .expectStatus()
             .isOk
-            .expectBody()
-            .json(objectMapper.writeValueAsString(sessionResponseDto))
+            .expectBody<SessionWalletCreateResponseDto>()
+            .consumeWith { assertEquals(sessionResponseDto, it.responseBody) }
+    }
+
+    @Test
+    fun testCreateSessionWalletWithAPM() = runTest {
+        /* preconditions */
+        val walletId = UUID.randomUUID()
+        val sessionResponseDto =
+            SessionWalletCreateResponseDto()
+                .orderId("W3948594857645ruey")
+                .sessionData(
+                    SessionWalletCreateResponseAPMDataDto()
+                        .paymentMethodType("apm")
+                        .redirectUrl("https://apm-redirect.url")
+                )
+        given { walletService.createSessionWallet(eq(walletId), any()) }
+            .willReturn(
+                mono {
+                    Pair(
+                        sessionResponseDto,
+                        LoggedAction(WALLET_DOMAIN, SessionWalletAddedEvent(walletId.toString()))
+                    )
+                }
+            )
+        given { loggingEventRepository.saveAll(any<Iterable<LoggingEvent>>()) }
+            .willReturn(Flux.empty())
+        /* test */
+        webClient
+            .post()
+            .uri("/wallets/${walletId}/sessions")
+            .contentType(MediaType.APPLICATION_JSON)
+            .header("x-user-id", UUID.randomUUID().toString())
+            .bodyValue(
+                // workaround since this class is the request entrypoint and so discriminator
+                // mapping annotation is not read during serialization
+                ObjectMapper()
+                    .writeValueAsString(WalletTestUtils.APM_SESSION_CREATE_REQUEST)
+                    .replace("SessionInputPayPalData", "paypal")
+            )
+            .exchange()
+            .expectStatus()
+            .isOk
+            .expectBody<SessionWalletCreateResponseDto>()
+            .consumeWith { assertEquals(sessionResponseDto, it.responseBody) }
     }
 
     @Test

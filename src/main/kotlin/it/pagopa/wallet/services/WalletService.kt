@@ -5,7 +5,7 @@ import it.pagopa.generated.wallet.model.*
 import it.pagopa.wallet.audit.*
 import it.pagopa.wallet.client.EcommercePaymentMethodsClient
 import it.pagopa.wallet.client.NpgClient
-import it.pagopa.wallet.config.OnboardingReturnUrlConfig
+import it.pagopa.wallet.config.OnboardingConfig
 import it.pagopa.wallet.config.SessionUrlConfig
 import it.pagopa.wallet.documents.wallets.Application
 import it.pagopa.wallet.documents.wallets.details.CardDetails
@@ -31,6 +31,7 @@ import kotlinx.coroutines.reactor.mono
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.util.UriComponentsBuilder
 import reactor.core.publisher.Mono
@@ -47,7 +48,7 @@ class WalletService(
     @Autowired private val npgSessionRedisTemplate: NpgSessionsTemplateWrapper,
     @Autowired private val sessionUrlConfig: SessionUrlConfig,
     @Autowired private val uniqueIdUtils: UniqueIdUtils,
-    @Autowired private val onboardingReturnUrlConfig: OnboardingReturnUrlConfig
+    @Autowired private val onboardingConfig: OnboardingConfig
 ) {
 
     companion object {
@@ -61,6 +62,13 @@ class WalletService(
      * Logger instance
      */
     var logger: Logger = LoggerFactory.getLogger(this.javaClass)
+
+    private data class SessionCreationData(
+        val paymentGatewayResponse: Fields,
+        val wallet: Wallet,
+        val orderId: String,
+        val isAPM: Boolean
+    )
 
     fun createWallet(
         serviceList: List<ServiceName>,
@@ -98,10 +106,8 @@ class WalletService(
                                  * against returned payment method name and WalletDetailsType enumeration
                                  */
                                 when (WalletDetailsType.valueOf(it)) {
-                                    WalletDetailsType.CARDS ->
-                                        onboardingReturnUrlConfig.cardReturnUrl
-                                    WalletDetailsType.PAYPAL ->
-                                        onboardingReturnUrlConfig.apmReturnUrl
+                                    WalletDetailsType.CARDS -> onboardingConfig.cardReturnUrl
+                                    WalletDetailsType.PAYPAL -> onboardingConfig.apmReturnUrl
                                 }
                             }
                         )
@@ -110,7 +116,8 @@ class WalletService(
     }
 
     fun createSessionWallet(
-        walletId: UUID
+        walletId: UUID,
+        sessionInputDataDto: SessionInputDataDto
     ): Mono<Pair<SessionWalletCreateResponseDto, LoggedAction<Wallet>>> {
         logger.info("Create session for walletId: $walletId")
         return walletRepository
@@ -172,26 +179,48 @@ class WalletService(
                             )
                     )
                     .map { hostedOrderResponse ->
-                        Triple(hostedOrderResponse, wallet, Pair(orderId, contractId))
+                        val isAPM = paymentMethod.paymentTypeCode != "CP"
+
+                        val newDetails =
+                            when (sessionInputDataDto) {
+                                is SessionInputCardDataDto -> wallet.details
+                                is SessionInputPayPalDataDto ->
+                                    PayPalDetails(null, sessionInputDataDto.pspId)
+                                else ->
+                                    throw InternalServerErrorException("Unhandled session input")
+                            }
+
+                        /*
+                         * Credit card onboarding requires a two-step validation process
+                         * (see WalletService#confirmPaymentCard), while for APMs
+                         * we just need the gateway to notify us of the onboarding outcome
+                         */
+                        val newStatus =
+                            if (isAPM) {
+                                WalletStatusDto.VALIDATION_REQUESTED
+                            } else {
+                                WalletStatusDto.INITIALIZED
+                            }
+                        val updatedWallet =
+                            wallet.copy(
+                                contractId = ContractId(contractId),
+                                status = newStatus,
+                                details = newDetails
+                            )
+                        SessionCreationData(
+                            hostedOrderResponse,
+                            updatedWallet,
+                            orderId,
+                            isAPM = isAPM
+                        )
                     }
             }
-            .map { (hostedOrderResponse, wallet, orderIdAndContractId) ->
-                val contractId = orderIdAndContractId.second
-                Triple(
-                    hostedOrderResponse,
-                    wallet.copy(
-                        contractId = ContractId(contractId),
-                        status = WalletStatusDto.INITIALIZED
-                    ),
-                    orderIdAndContractId.first
-                )
+            .flatMap { sessionCreationData ->
+                walletRepository
+                    .save(sessionCreationData.wallet.toDocument())
+                    .thenReturn(sessionCreationData)
             }
-            .flatMap { (hostedOrderResponse, wallet, orderId) ->
-                walletRepository.save(wallet.toDocument()).map {
-                    Triple(hostedOrderResponse, wallet, orderId)
-                }
-            }
-            .flatMap { (hostedOrderResponse, wallet, orderId) ->
+            .flatMap { (hostedOrderResponse, wallet, orderId, isAPM) ->
                 npgSessionRedisTemplate
                     .save(
                         NpgSession(
@@ -208,18 +237,7 @@ class WalletService(
                     .map {
                         SessionWalletCreateResponseDto()
                             .orderId(orderId)
-                            .cardFormFields(
-                                hostedOrderResponse.fields
-                                    .stream()
-                                    .map { f ->
-                                        FieldDto()
-                                            .id(f.id)
-                                            .src(URI.create(f.src))
-                                            .type(f.type)
-                                            .propertyClass(f.propertyClass)
-                                    }
-                                    .toList()
-                            )
+                            .sessionData(buildResponseSessionData(hostedOrderResponse, isAPM))
                     }
                     .map { it to wallet }
             }
@@ -228,6 +246,46 @@ class WalletService(
                     LoggedAction(wallet, SessionWalletAddedEvent(wallet.id.value.toString()))
             }
     }
+
+    private fun buildResponseSessionData(
+        hostedOrderResponse: Fields,
+        isAPM: Boolean
+    ): SessionWalletCreateResponseSessionDataDto =
+        if (isAPM) {
+            if (hostedOrderResponse.state != WorkflowState.REDIRECTED_TO_EXTERNAL_DOMAIN) {
+                throw NpgClientException(
+                    "Got state ${hostedOrderResponse.state} instead of REDIRECTED_TO_EXTERNAL_DOMAIN for APM session initialization",
+                    HttpStatus.BAD_GATEWAY
+                )
+            }
+
+            SessionWalletCreateResponseAPMDataDto()
+                .redirectUrl(hostedOrderResponse.url)
+                .paymentMethodType("apm")
+        } else {
+            val cardFields = hostedOrderResponse.fields!!
+            if (cardFields.isEmpty()) {
+                throw NpgClientException(
+                    "Received empty fields array in orders/build call to NPG!",
+                    HttpStatus.BAD_GATEWAY
+                )
+            }
+
+            SessionWalletCreateResponseCardDataDto()
+                .paymentMethodType("cards")
+                .cardFormFields(
+                    cardFields
+                        .stream()
+                        .map { f ->
+                            FieldDto()
+                                .id(f.id)
+                                .src(URI.create(f.src))
+                                .type(f.type)
+                                .propertyClass(f.propertyClass)
+                        }
+                        .toList()
+                )
+        }
 
     fun validateWalletSession(
         orderId: String,
@@ -294,10 +352,10 @@ class WalletService(
             }
             .doOnNext { logger.debug("State Response: {}", it.first) }
             .filter { (state) ->
-                state.state == State.GDI_VERIFICATION &&
-                    state.fieldSet != null &&
-                    state.fieldSet!!.fields.isNotEmpty() &&
-                    state.fieldSet!!.fields[0]!!.src != null
+                state.state == WorkflowState.GDI_VERIFICATION &&
+                    state.fieldSet?.fields != null &&
+                    state.fieldSet!!.fields!!.isNotEmpty() &&
+                    state.fieldSet!!.fields!![0]!!.src != null
             }
             .switchIfEmpty {
                 walletRepository
@@ -316,7 +374,7 @@ class WalletService(
                                         Base64.getUrlEncoder()
                                             .encodeToString(
                                                 it.fieldSet!!
-                                                    .fields[0]
+                                                    .fields!![0]
                                                     .src!!
                                                     .toByteArray(StandardCharsets.UTF_8)
                                             )
@@ -383,7 +441,7 @@ class WalletService(
                 walletRepository
                     .findById(walletId.value.toString())
                     .switchIfEmpty { Mono.error(WalletNotFoundException(walletId)) }
-                    .filter { wallet -> session.walletId == wallet.id.toString() }
+                    .filter { wallet -> session.walletId == wallet.id }
                     .switchIfEmpty {
                         Mono.error(WalletSessionMismatchException(session.sessionId, walletId))
                     }
