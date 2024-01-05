@@ -638,25 +638,31 @@ class WalletService(
             .findById(walletId.toString())
             .switchIfEmpty { Mono.error(WalletNotFoundException(WalletId(walletId))) }
             .flatMap { wallet ->
-                val walletApplications = wallet.applications.associateBy { it.name }.toMutableMap()
+                val walletApplications =
+                    wallet.applications.associateBy { ServiceName(it.name) }.toMap()
 
                 servicesToUpdate
                     .toFlux()
                     .flatMap { (serviceName, requestedStatus) ->
-                        serviceRepository.findById(serviceName.name).map {
-                            Triple(it, serviceName, requestedStatus)
-                        }
+                        serviceRepository
+                            .findByName(serviceName.name)
+                            .map { Triple(it, serviceName, requestedStatus) }
+                            .switchIfEmpty(Mono.error(ServiceNameNotFoundException(serviceName)))
                     }
                     .reduce(
-                        Pair(
+                        Triple(
                             mutableMapOf<ServiceName, ServiceStatus>(),
-                            mutableMapOf<ServiceName, ServiceStatus>()
+                            mutableMapOf<ServiceName, ServiceStatus>(),
+                            walletApplications.toMutableMap()
                         )
                     ) {
-                        (servicesUpdatedSuccessfully, servicesWithUpdateFailed),
+                        (
+                            servicesUpdatedSuccessfully,
+                            servicesWithUpdateFailed,
+                            updatedApplications),
                         (service, serviceName, requestedStatus) ->
                         val serviceGlobalStatus = ServiceStatus.valueOf(service.status)
-                        val walletApplication = walletApplications[serviceName.name]
+                        val walletApplication = walletApplications[serviceName]
 
                         if (
                             ServiceStatus.canChangeToStatus(
@@ -664,7 +670,7 @@ class WalletService(
                                 global = serviceGlobalStatus
                             )
                         ) {
-                            walletApplications[serviceName.name] =
+                            updatedApplications[serviceName] =
                                 walletApplication?.copy(
                                     lastUpdateDate = Instant.now().toString(),
                                     status = requestedStatus.name
@@ -680,14 +686,20 @@ class WalletService(
                             servicesWithUpdateFailed[serviceName] = serviceGlobalStatus
                         }
 
-                        Pair(servicesUpdatedSuccessfully, servicesWithUpdateFailed)
+                        Triple(
+                            servicesUpdatedSuccessfully,
+                            servicesWithUpdateFailed,
+                            updatedApplications
+                        )
                     }
-                    .map { (servicesUpdatedSuccessfully, servicesWithUpdateFailed) ->
+                    .map {
+                        (servicesUpdatedSuccessfully, servicesWithUpdateFailed, updatedApplications)
+                        ->
                         WalletServiceUpdateData(
                             servicesUpdatedSuccessfully,
                             servicesWithUpdateFailed,
                             wallet.copy(
-                                applications = walletApplications.values.toList(),
+                                applications = updatedApplications.values.toList(),
                                 updateDate = Instant.now()
                             )
                         )
