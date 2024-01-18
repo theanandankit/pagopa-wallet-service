@@ -6,6 +6,7 @@ import it.pagopa.generated.npg.model.Field
 import it.pagopa.generated.wallet.model.*
 import it.pagopa.wallet.WalletTestUtils
 import it.pagopa.wallet.WalletTestUtils.APM_SESSION_CREATE_REQUEST
+import it.pagopa.wallet.WalletTestUtils.MASKED_EMAIL
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_KO_OPERATION_RESULT
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT_WITH_PAYPAL_DETAILS
@@ -25,6 +26,7 @@ import it.pagopa.wallet.WalletTestUtils.getValidCardsPaymentMethod
 import it.pagopa.wallet.WalletTestUtils.initializedWalletDomainEmptyServicesNullDetailsNoPaymentInstrument
 import it.pagopa.wallet.WalletTestUtils.newWalletDocumentSaved
 import it.pagopa.wallet.WalletTestUtils.walletDocument
+import it.pagopa.wallet.WalletTestUtils.walletDocumentAPM
 import it.pagopa.wallet.WalletTestUtils.walletDocumentEmptyServicesNullDetailsNoPaymentInstrument
 import it.pagopa.wallet.WalletTestUtils.walletDocumentValidated
 import it.pagopa.wallet.WalletTestUtils.walletDocumentVerifiedWithAPM
@@ -42,7 +44,6 @@ import it.pagopa.wallet.documents.service.Service as ServiceDocument
 import it.pagopa.wallet.documents.wallets.Wallet
 import it.pagopa.wallet.documents.wallets.details.CardDetails
 import it.pagopa.wallet.documents.wallets.details.PayPalDetails
-import it.pagopa.wallet.domain.details.MaskedEmail
 import it.pagopa.wallet.domain.services.Service
 import it.pagopa.wallet.domain.services.ServiceId
 import it.pagopa.wallet.domain.services.ServiceName
@@ -1232,7 +1233,7 @@ class WalletServiceTest {
     }
 
     @Test
-    fun `should find wallet document`() {
+    fun `should find wallet document with cards`() {
         /* preconditions */
 
         mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
@@ -1267,6 +1268,93 @@ class WalletServiceTest {
                                 .expiryDate((wallet.details as CardDetails).expiryDate)
                                 .maskedPan((wallet.details as CardDetails).maskedPan)
                         )
+
+                given { walletRepository.findById(any<String>()) }.willAnswer { Mono.just(wallet) }
+
+                /* test */
+
+                StepVerifier.create(walletService.findWallet(WALLET_UUID.value))
+                    .expectNext(walletInfoDto)
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should find wallet document with paypal with email`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val wallet = walletDocumentAPM()
+                val walletInfoDto =
+                    WalletInfoDto()
+                        .walletId(UUID.fromString(wallet.id))
+                        .status(WalletStatusDto.valueOf(wallet.status))
+                        .paymentMethodId(wallet.paymentMethodId)
+                        .paymentInstrumentId(wallet.paymentInstrumentId.let { it.toString() })
+                        .userId(wallet.userId)
+                        .updateDate(OffsetDateTime.parse(wallet.updateDate.toString()))
+                        .creationDate(OffsetDateTime.parse(wallet.creationDate.toString()))
+                        .services(
+                            wallet.applications.map { application ->
+                                ServiceDto()
+                                    .name(ServiceNameDto.valueOf(application.name))
+                                    .status(ServiceStatusDto.valueOf(application.status))
+                            }
+                        )
+                        .details(
+                            WalletPaypalDetailsDto().maskedEmail(MASKED_EMAIL.value).pspId(PSP_ID)
+                        )
+
+                given { walletRepository.findById(any<String>()) }.willAnswer { Mono.just(wallet) }
+
+                /* test */
+
+                StepVerifier.create(walletService.findWallet(WALLET_UUID.value))
+                    .expectNext(walletInfoDto)
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should find wallet document with paypal without email`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val wallet =
+                    walletDocumentAPM()
+                        .copy(details = PayPalDetails(maskedEmail = null, pspId = PSP_ID))
+
+                val walletInfoDto =
+                    WalletInfoDto()
+                        .walletId(UUID.fromString(wallet.id))
+                        .status(WalletStatusDto.valueOf(wallet.status))
+                        .paymentMethodId(wallet.paymentMethodId)
+                        .paymentInstrumentId(wallet.paymentInstrumentId.let { it.toString() })
+                        .userId(wallet.userId)
+                        .updateDate(OffsetDateTime.parse(wallet.updateDate.toString()))
+                        .creationDate(OffsetDateTime.parse(wallet.creationDate.toString()))
+                        .services(
+                            wallet.applications.map { application ->
+                                ServiceDto()
+                                    .name(ServiceNameDto.valueOf(application.name))
+                                    .status(ServiceStatusDto.valueOf(application.status))
+                            }
+                        )
+                        .details(WalletPaypalDetailsDto().maskedEmail(null).pspId(PSP_ID))
 
                 given { walletRepository.findById(any<String>()) }.willAnswer { Mono.just(wallet) }
 
@@ -1353,8 +1441,7 @@ class WalletServiceTest {
     fun `should find wallet auth data by ID with apm`() {
         /* preconditions */
 
-        val wallet =
-            walletDocument().copy(details = PayPalDetails(MaskedEmail("maskedEmail"), "pspId"))
+        val wallet = walletDocument().copy(details = PayPalDetails(MASKED_EMAIL.value, "pspId"))
         val walletAuthDataDto = WalletTestUtils.walletAPMAuthDataDto()
 
         given { walletRepository.findById(wallet.id) }.willReturn(Mono.just(wallet))
@@ -2056,7 +2143,7 @@ class WalletServiceTest {
         val sessionToken = "token"
         val walletDocument =
             walletDocumentVerifiedWithAPM(
-                PayPalDetails(maskedEmail = MaskedEmail("te**@te**.it"), pspId = "pspId")
+                PayPalDetails(maskedEmail = MASKED_EMAIL.value, pspId = "pspId")
             )
         val npgSession = NpgSession(ORDER_ID, sessionId, sessionToken, walletId.toString())
         given { npgSessionRedisTemplate.findById(ORDER_ID) }.willReturn(npgSession)
@@ -2197,7 +2284,7 @@ class WalletServiceTest {
         val operationId = "validationOperationId"
         val walletDocument =
             walletDocumentVerifiedWithAPM(
-                PayPalDetails(maskedEmail = MaskedEmail("te**@te**.it"), pspId = "pspId")
+                PayPalDetails(maskedEmail = MASKED_EMAIL.value, pspId = "pspId")
             )
         val notifyRequestDto = NOTIFY_WALLET_REQUEST_KO_OPERATION_RESULT
         val npgSession = NpgSession(orderId, sessionId, sessionToken, WALLET_UUID.value.toString())
@@ -2274,7 +2361,7 @@ class WalletServiceTest {
         val operationId = "validationOperationId"
         val walletDocument =
             walletDocumentVerifiedWithAPM(
-                PayPalDetails(maskedEmail = MaskedEmail("te**@te**.it"), pspId = "pspId")
+                PayPalDetails(maskedEmail = MASKED_EMAIL.value, pspId = "pspId")
             )
         val notifyRequestDto = NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT
         val npgSession = NpgSession(orderId, sessionId, sessionToken, WALLET_UUID.value.toString())
@@ -2318,14 +2405,7 @@ class WalletServiceTest {
         val notifyRequestDto = NOTIFY_WALLET_REQUEST_OK_OPERATION_RESULT_WITH_PAYPAL_DETAILS
         val walletDocument =
             walletDocumentVerifiedWithAPM(
-                PayPalDetails(
-                    maskedEmail =
-                        MaskedEmail(
-                            (notifyRequestDto.details as WalletNotificationRequestPaypalDetailsDto)
-                                .maskedEmail
-                        ),
-                    pspId = "pspId"
-                )
+                PayPalDetails(maskedEmail = MASKED_EMAIL.value, pspId = "pspId")
             )
 
         val npgSession = NpgSession(orderId, sessionId, sessionToken, WALLET_UUID.value.toString())

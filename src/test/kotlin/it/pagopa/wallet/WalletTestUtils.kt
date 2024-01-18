@@ -8,12 +8,13 @@ import it.pagopa.wallet.documents.service.Service
 import it.pagopa.wallet.documents.wallets.Application as WalletServiceDocument
 import it.pagopa.wallet.documents.wallets.Wallet
 import it.pagopa.wallet.documents.wallets.details.CardDetails
+import it.pagopa.wallet.documents.wallets.details.PayPalDetails as PayPalDetailsDocument
 import it.pagopa.wallet.documents.wallets.details.WalletDetails
-import it.pagopa.wallet.domain.details.*
 import it.pagopa.wallet.domain.services.ServiceId
 import it.pagopa.wallet.domain.services.ServiceName
 import it.pagopa.wallet.domain.services.ServiceStatus
 import it.pagopa.wallet.domain.wallets.*
+import it.pagopa.wallet.domain.wallets.details.*
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -45,6 +46,8 @@ object WalletTestUtils {
     const val ORDER_ID = "WFHDJFIRUT48394832"
     private val TYPE = WalletDetailsType.CARDS
     val TIMESTAMP: Instant = Instant.now()
+
+    val MASKED_EMAIL = MaskedEmail("maskedEmail")
 
     val creationDate: Instant = Instant.now()
 
@@ -370,8 +373,34 @@ object WalletTestUtils {
         return wallet
     }
 
+    fun walletDocumentAPM(): Wallet {
+        val wallet =
+            Wallet(
+                WALLET_UUID.value.toString(),
+                USER_ID.id.toString(),
+                WalletStatusDto.CREATED.name,
+                PAYMENT_METHOD_ID_CARDS.value.toString(),
+                PAYMENT_INSTRUMENT_ID.value.toString(),
+                CONTRACT_ID.contractId,
+                OperationResultEnum.EXECUTED.value,
+                listOf(
+                    WalletServiceDocument(
+                        SERVICE_ID.id.toString(),
+                        SERVICE_NAME.name,
+                        ServiceStatus.DISABLED.toString(),
+                        TIMESTAMP.toString()
+                    )
+                ),
+                PayPalDetailsDocument(maskedEmail = MASKED_EMAIL.value, pspId = PSP_ID),
+                0,
+                creationDate,
+                creationDate
+            )
+        return wallet
+    }
+
     val WALLET_DOMAIN =
-        it.pagopa.wallet.domain.wallets.Wallet(
+        Wallet(
             WALLET_UUID,
             USER_ID,
             WalletStatusDto.CREATED,
@@ -386,7 +415,7 @@ object WalletTestUtils {
             creationDate
         )
 
-    private fun newWalletDocumentToBeSaved(): it.pagopa.wallet.documents.wallets.Wallet {
+    private fun newWalletDocumentToBeSaved(): Wallet {
 
         return Wallet(
             WALLET_UUID.value.toString(),
@@ -404,7 +433,7 @@ object WalletTestUtils {
         )
     }
 
-    fun newWalletDocumentSaved(): it.pagopa.wallet.documents.wallets.Wallet {
+    fun newWalletDocumentSaved(): Wallet {
         val wallet = newWalletDocumentToBeSaved()
         return wallet
     }
@@ -486,6 +515,19 @@ object WalletTestUtils {
                     .brand(WalletCardDetailsDto.BrandEnum.MASTERCARD)
                     .expiryDate(EXP_DATE.expDate)
                     .holder(HOLDER_NAME.holderName)
+            )
+
+    fun walletInfoDtoAPM() =
+        WalletInfoDto()
+            .walletId(WALLET_UUID.value)
+            .status(WalletStatusDto.CREATED)
+            .creationDate(OffsetDateTime.ofInstant(TIMESTAMP, ZoneId.systemDefault()))
+            .updateDate(OffsetDateTime.ofInstant(TIMESTAMP, ZoneId.systemDefault()))
+            .paymentMethodId(PAYMENT_METHOD_ID_APM.value.toString())
+            .userId(USER_ID.id.toString())
+            .services(listOf())
+            .details(
+                WalletPaypalDetailsDto().type("PAYPAL").maskedEmail("maskedEmail").pspId(PSP_ID)
             )
 
     fun walletCardAuthDataDto() =
@@ -590,7 +632,7 @@ object WalletTestUtils {
             .details(
                 WalletNotificationRequestPaypalDetailsDto()
                     .type("PAYPAL")
-                    .maskedEmail("te**@te**.it")
+                    .maskedEmail(MASKED_EMAIL.value)
             )
 
     val NOTIFY_WALLET_REQUEST_KO_OPERATION_RESULT: WalletNotificationRequestDto =
