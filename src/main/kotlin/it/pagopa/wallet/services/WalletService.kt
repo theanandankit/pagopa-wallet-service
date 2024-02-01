@@ -11,6 +11,8 @@ import it.pagopa.wallet.documents.wallets.Application
 import it.pagopa.wallet.documents.wallets.details.CardDetails
 import it.pagopa.wallet.documents.wallets.details.PayPalDetails as PayPalDetailsDocument
 import it.pagopa.wallet.documents.wallets.details.WalletDetails
+import it.pagopa.wallet.domain.services.ApplicationMetadata
+import it.pagopa.wallet.domain.services.ServiceId
 import it.pagopa.wallet.domain.services.ServiceName
 import it.pagopa.wallet.domain.services.ServiceStatus
 import it.pagopa.wallet.domain.wallets.*
@@ -33,6 +35,7 @@ import kotlinx.coroutines.reactor.mono
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.util.UriComponentsBuilder
@@ -50,7 +53,8 @@ class WalletService(
     @Autowired private val npgSessionRedisTemplate: NpgSessionsTemplateWrapper,
     @Autowired private val sessionUrlConfig: SessionUrlConfig,
     @Autowired private val uniqueIdUtils: UniqueIdUtils,
-    @Autowired private val onboardingConfig: OnboardingConfig
+    @Autowired private val onboardingConfig: OnboardingConfig,
+    @Autowired @Value("\${wallet.payment.cardReturnUrl}") private val walletPaymentReturnUrl: String
 ) {
 
     companion object {
@@ -110,6 +114,71 @@ class WalletService(
                                 when (WalletDetailsType.valueOf(it)) {
                                     WalletDetailsType.CARDS -> onboardingConfig.cardReturnUrl
                                     WalletDetailsType.PAYPAL -> onboardingConfig.apmReturnUrl
+                                }
+                            }
+                        )
+                    }
+            }
+    }
+    fun createWalletForTransaction(
+        userId: UUID,
+        paymentMethodId: UUID,
+        transactionId: String,
+        amount: Int
+    ): Mono<Pair<LoggedAction<Wallet>, Optional<URI>>> {
+        logger.info(
+            "Create wallet for transaction with contextual onboard for payment methodId: $paymentMethodId userId: $userId and transactionId: $transactionId"
+        )
+        return ecommercePaymentMethodsClient
+            .getPaymentMethodById(paymentMethodId.toString())
+            .map {
+                val creationTime = Instant.now()
+                return@map Pair(
+                    Wallet(
+                        id = WalletId(UUID.randomUUID()),
+                        userId = UserId(userId),
+                        status = WalletStatusDto.CREATED,
+                        paymentMethodId = PaymentMethodId(paymentMethodId),
+                        version = 0,
+                        creationDate = creationTime,
+                        updateDate = creationTime,
+                        applications =
+                            listOf(
+                                Application(
+                                    ServiceId(UUID.randomUUID()),
+                                    ServiceName(
+                                        ServiceNameDto.PAGOPA.value
+                                    ), // We enter a static value since these wallets will be
+                                    // created only for pagopa payments
+                                    ServiceStatus.ENABLED,
+                                    creationTime,
+                                    ApplicationMetadata(
+                                        hashMapOf(
+                                            Pair("paymentWithContextualOnboard", "true"),
+                                            Pair("transactionId", transactionId),
+                                            Pair("amount", amount.toString())
+                                        )
+                                    )
+                                )
+                            )
+                    ),
+                    it
+                )
+            }
+            .flatMap { (wallet, paymentMethodResponse) ->
+                walletRepository
+                    .save(wallet.toDocument())
+                    .map { LoggedAction(wallet, WalletAddedEvent(wallet.id.value.toString())) }
+                    .map { loggedAction ->
+                        Pair(
+                            loggedAction,
+                            paymentMethodResponse.name.let {
+                                when (WalletDetailsType.valueOf(it)) {
+                                    WalletDetailsType.CARDS ->
+                                        Optional.of(URI.create(walletPaymentReturnUrl))
+                                    else -> {
+                                        Optional.empty()
+                                    }
                                 }
                             }
                         )

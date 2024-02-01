@@ -61,14 +61,14 @@ class WalletControllerTest {
 
     @Autowired private lateinit var webClient: WebTestClient
 
+    private val webviewPaymentUrl = URI.create("https://dev.payment-wallet.pagopa.it/onboarding")
+
     private val objectMapper =
         JsonMapper.builder()
             .addModule(JavaTimeModule())
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
             .serializationInclusion(JsonInclude.Include.NON_NULL)
             .build()
-
-    private val webviewPaymentUrl = URI.create("https://dev.payment-wallet.pagopa.it/onboarding")
 
     @BeforeEach
     fun beforeTest() {

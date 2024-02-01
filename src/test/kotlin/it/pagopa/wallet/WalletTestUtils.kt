@@ -581,6 +581,12 @@ object WalletTestUtils {
             .useDiagnosticTracing(false)
             .paymentMethodId(PAYMENT_METHOD_ID_CARDS.value)
 
+    val CREATE_WALLET_TRANSACTION_REQUEST: WalletTransactionCreateRequestDto =
+        WalletTransactionCreateRequestDto()
+            .useDiagnosticTracing(false)
+            .paymentMethodId(PAYMENT_METHOD_ID_CARDS.value)
+            .amount(200)
+
     val WALLET_SERVICE_1: WalletServiceDto =
         WalletServiceDto().name(ServiceNameDto.PAGOPA).status(WalletServiceStatusDto.DISABLED)
 
