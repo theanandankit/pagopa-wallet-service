@@ -24,6 +24,8 @@ import it.pagopa.wallet.repositories.NpgSession
 import it.pagopa.wallet.repositories.NpgSessionsTemplateWrapper
 import it.pagopa.wallet.repositories.ServiceRepository
 import it.pagopa.wallet.repositories.WalletRepository
+import it.pagopa.wallet.util.JwtTokenUtils
+import it.pagopa.wallet.util.TransactionId
 import it.pagopa.wallet.util.UniqueIdUtils
 import java.net.URI
 import java.net.URLDecoder
@@ -54,6 +56,7 @@ class WalletService(
     @Autowired private val sessionUrlConfig: SessionUrlConfig,
     @Autowired private val uniqueIdUtils: UniqueIdUtils,
     @Autowired private val onboardingConfig: OnboardingConfig,
+    @Autowired private val jwtTokenUtils: JwtTokenUtils,
     @Autowired @Value("\${wallet.payment.cardReturnUrl}") private val walletPaymentReturnUrl: String
 ) {
 
@@ -123,7 +126,7 @@ class WalletService(
     fun createWalletForTransaction(
         userId: UUID,
         paymentMethodId: UUID,
-        transactionId: String,
+        transactionId: TransactionId,
         amount: Int
     ): Mono<Pair<LoggedAction<Wallet>, Optional<URI>>> {
         logger.info(
@@ -154,9 +157,20 @@ class WalletService(
                                     creationTime,
                                     ApplicationMetadata(
                                         hashMapOf(
-                                            Pair("paymentWithContextualOnboard", "true"),
-                                            Pair("transactionId", transactionId),
-                                            Pair("amount", amount.toString())
+                                            Pair(
+                                                ApplicationMetadata.Metadata
+                                                    .PAYMENT_WITH_CONTEXTUAL_ONBOARD
+                                                    .value,
+                                                "true"
+                                            ),
+                                            Pair(
+                                                ApplicationMetadata.Metadata.TRANSACTION_ID.value,
+                                                transactionId.value().toString()
+                                            ),
+                                            Pair(
+                                                ApplicationMetadata.Metadata.AMOUNT.value,
+                                                amount.toString()
+                                            )
                                         )
                                     )
                                 )
@@ -208,15 +222,36 @@ class WalletService(
                 }
             }
             .flatMap { (uniqueIds, paymentMethod, wallet) ->
+                val pagopaApplication =
+                    wallet.applications.singleOrNull { application ->
+                        application.name.equals(ServiceName(ServiceNameDto.PAGOPA.value)) &&
+                            application.status == ServiceStatus.ENABLED
+                    }
+                val isTransactionWithContextualOnboard =
+                    isWalletForTransactionWithContextualOnboard(pagopaApplication)
                 val orderId = uniqueIds.first
+                val amount =
+                    if (isTransactionWithContextualOnboard)
+                        pagopaApplication
+                            ?.metadata
+                            ?.data
+                            ?.get(ApplicationMetadata.Metadata.AMOUNT.value)
+                    else null
                 val contractId = uniqueIds.second
                 val basePath = URI.create(sessionUrlConfig.basePath)
                 val merchantUrl = sessionUrlConfig.basePath
                 val resultUrl = basePath.resolve(sessionUrlConfig.outcomeSuffix)
                 val cancelUrl = basePath.resolve(sessionUrlConfig.cancelSuffix)
                 val notificationUrl =
-                    UriComponentsBuilder.fromHttpUrl(sessionUrlConfig.notificationUrl)
-                        .build(mapOf(Pair("walletId", wallet.id.value), Pair("orderId", orderId)))
+                    buildNotificationUrl(
+                        isTransactionWithContextualOnboard,
+                        wallet.id.value,
+                        orderId,
+                        pagopaApplication
+                            ?.metadata
+                            ?.data
+                            ?.get(ApplicationMetadata.Metadata.TRANSACTION_ID.value)
+                    )
 
                 npgClient
                     .createNpgOrderBuild(
@@ -227,20 +262,29 @@ class WalletService(
                             .order(
                                 Order()
                                     .orderId(orderId)
-                                    .amount(CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT)
+                                    .amount(
+                                        if (isTransactionWithContextualOnboard) amount
+                                        else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
+                                    )
                                     .currency(CREATE_HOSTED_ORDER_REQUEST_CURRENCY_EUR)
                                 // TODO customerId must be valorised with the one coming from
                             )
                             .paymentSession(
                                 PaymentSession()
-                                    .actionType(ActionType.VERIFY)
+                                    .actionType(
+                                        if (isTransactionWithContextualOnboard) ActionType.PAY
+                                        else ActionType.VERIFY
+                                    )
                                     .recurrence(
                                         RecurringSettings()
                                             .action(RecurringAction.CONTRACT_CREATION)
                                             .contractId(contractId)
                                             .contractType(RecurringContractType.CIT)
                                     )
-                                    .amount(CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT)
+                                    .amount(
+                                        if (isTransactionWithContextualOnboard) amount
+                                        else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
+                                    )
                                     .language(CREATE_HOSTED_ORDER_REQUEST_LANGUAGE_ITA)
                                     .captureType(CaptureType.IMPLICIT)
                                     .paymentService(paymentMethod.name)
@@ -820,6 +864,51 @@ class WalletService(
             WalletNotificationRequestDto.OperationResultEnum.PENDING ->
                 SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_4
             else -> SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_1
+        }
+    }
+
+    private fun isWalletForTransactionWithContextualOnboard(
+        application: it.pagopa.wallet.domain.wallets.Application?
+    ): Boolean {
+        if (application != null) {
+            return application.metadata.data[
+                    ApplicationMetadata.Metadata.PAYMENT_WITH_CONTEXTUAL_ONBOARD.value]
+                .toBoolean()
+        }
+        return false
+    }
+
+    private fun buildNotificationUrl(
+        isTransactionWithContextualOnboard: Boolean,
+        walletId: UUID,
+        orderId: String,
+        transactionId: String?
+    ): URI {
+        return if (!isTransactionWithContextualOnboard) {
+            UriComponentsBuilder.fromHttpUrl(sessionUrlConfig.notificationUrl)
+                .build(mapOf(Pair("walletId", walletId), Pair("orderId", orderId)))
+        } else {
+            UriComponentsBuilder.fromHttpUrl(
+                    sessionUrlConfig.trxWithContextualOnboardNotificationUrl
+                )
+                .build(
+                    mapOf(
+                        Pair("transactionId", transactionId),
+                        Pair("walletId", walletId),
+                        Pair("orderId", orderId),
+                        Pair(
+                            "sessionToken",
+                            transactionId?.let {
+                                jwtTokenUtils
+                                    .generateJwtTokenForNpgNotifications(
+                                        walletId.toString(),
+                                        transactionId
+                                    )
+                                    .fold({ throw it }, { token -> token })
+                            }
+                        )
+                    )
+                )
         }
     }
 }
