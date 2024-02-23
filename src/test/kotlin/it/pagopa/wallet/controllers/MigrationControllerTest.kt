@@ -1,6 +1,7 @@
 package it.pagopa.wallet.controllers
 
 import it.pagopa.generated.wallet.model.WalletPmAssociationRequestDto
+import java.util.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -43,6 +44,6 @@ class MigrationControllerTest {
 
     companion object {
         val REGISTER_WALLET_PM_REQUEST =
-            WalletPmAssociationRequestDto().walletIdPm(123).fiscalCode("ABCDEFG")
+            WalletPmAssociationRequestDto().walletIdPm(123).userId(UUID.randomUUID())
     }
 }
