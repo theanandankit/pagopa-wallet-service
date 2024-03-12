@@ -15,7 +15,10 @@ import it.pagopa.wallet.domain.wallets.details.*
 import it.pagopa.wallet.domain.wallets.details.CardDetails as DomainCardDetails
 import it.pagopa.wallet.domain.wallets.details.PayPalDetails
 import it.pagopa.wallet.exception.*
-import it.pagopa.wallet.repositories.*
+import it.pagopa.wallet.repositories.ApplicationRepository
+import it.pagopa.wallet.repositories.NpgSession
+import it.pagopa.wallet.repositories.NpgSessionsTemplateWrapper
+import it.pagopa.wallet.repositories.WalletRepository
 import it.pagopa.wallet.util.JwtTokenUtils
 import it.pagopa.wallet.util.TransactionId
 import it.pagopa.wallet.util.UniqueIdUtils
@@ -24,6 +27,8 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import java.util.*
 import kotlinx.coroutines.reactor.mono
 import org.slf4j.Logger
@@ -99,6 +104,8 @@ class WalletService(
                 "913" to SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_1,
                 "999" to SessionWalletRetrieveResponseDto.OutcomeEnum.NUMBER_1,
             )
+        val walletExpiryDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMM")
+        val npgExpiryDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("MM/yy")
     }
 
     /*
@@ -541,21 +548,16 @@ class WalletService(
                         details =
                             DomainCardDetails(
                                 Bin(data.bin.orEmpty()),
-                                MaskedPan(
-                                    data.bin.orEmpty() +
-                                        ("*".repeat(
-                                            16 -
-                                                data.bin.orEmpty().length -
-                                                data.lastFourDigits.orEmpty().length
-                                        )) +
-                                        data.lastFourDigits.orEmpty()
-                                ),
-                                ExpiryDate(data.expiringDate.orEmpty()),
+                                LastFourDigits(data.lastFourDigits.orEmpty()),
+                                ExpiryDate(gatewayToWalletExpiryDate(data.expiringDate.orEmpty())),
                                 WalletCardDetailsDto.BrandEnum.valueOf(data.circuit.orEmpty()),
                                 PaymentInstrumentGatewayId("?")
                             )
                     )
             }
+
+    private fun gatewayToWalletExpiryDate(expiryDate: String) =
+        YearMonth.parse(expiryDate, npgExpiryDateFormatter).format(walletExpiryDateFormatter)
 
     fun findWallet(walletId: UUID): Mono<WalletInfoDto> {
         return walletRepository
@@ -761,7 +763,7 @@ class WalletService(
                     .type(details.type)
                     .bin(details.bin)
                     .expiryDate(details.expiryDate)
-                    .maskedPan(details.maskedPan)
+                    .lastFourDigits(details.lastFourDigits)
             is PayPalDetailsDocument ->
                 WalletPaypalDetailsDto().maskedEmail(details.maskedEmail).pspId(details.pspId)
             else -> null
