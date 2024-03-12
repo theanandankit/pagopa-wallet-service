@@ -191,7 +191,7 @@ class WalletService(
                             listOf(
                                 WalletApplication(
                                     WalletApplicationId(
-                                        ServiceNameDto.PAGOPA.value
+                                        "PAGOPA"
                                     ), // TODO We enter a static value since these wallets will be
                                     // created only for pagopa payments
                                     WalletApplicationStatus.ENABLED,
@@ -267,7 +267,7 @@ class WalletService(
             .flatMap { (uniqueIds, paymentMethod, wallet) ->
                 val pagopaApplication =
                     wallet.applications.singleOrNull { application ->
-                        application.id == WalletApplicationId(ServiceNameDto.PAGOPA.value) &&
+                        application.id == WalletApplicationId("PAGOPA") &&
                             application.status == WalletApplicationStatus.ENABLED
                     }
                 val isTransactionWithContextualOnboard =
@@ -747,11 +747,11 @@ class WalletService(
             .userId(wallet.userId)
             .updateDate(OffsetDateTime.parse(wallet.updateDate.toString()))
             .creationDate(OffsetDateTime.parse(wallet.creationDate.toString()))
-            .services(
+            .applications(
                 wallet.applications.map { application ->
-                    ServiceDto()
-                        .name(ServiceNameDto.valueOf(application.id))
-                        .status(ApplicationStatusDto.valueOf(application.status))
+                    WalletApplicationDto()
+                        .name(application.id)
+                        .status(WalletApplicationStatusDto.valueOf(application.status))
                 }
             )
             .details(toWalletInfoDetailsDto(wallet.details))
@@ -797,10 +797,10 @@ class WalletService(
             .paymentMethodData(paymentMethodData)
     }
 
-    fun updateWalletServices(
+    fun updateWalletApplications(
         walletId: UUID,
         applicationsToUpdate: List<Pair<WalletApplicationId, WalletApplicationStatus>>
-    ): Mono<LoggedAction<WalletServiceUpdateData>> {
+    ): Mono<LoggedAction<WalletApplicationUpdateData>> {
         return walletRepository
             .findById(walletId.toString())
             .switchIfEmpty { Mono.error(WalletNotFoundException(WalletId(walletId))) }
@@ -826,18 +826,18 @@ class WalletService(
                         )
                     ) {
                         (
-                            servicesUpdatedSuccessfully,
-                            servicesWithUpdateFailed,
+                            applicationsUpdatedSuccessfully,
+                            applicationsWithUpdateFailed,
                             updatedApplications),
                         (application, applicationId, requestedStatus) ->
-                        val serviceGlobalStatus =
+                        val applicationGlobalStatus =
                             WalletApplicationStatus.valueOf(application.status)
                         val walletApplication = walletApplications[applicationId]
 
                         if (
                             WalletApplicationStatus.canChangeToStatus(
                                 requested = requestedStatus,
-                                global = serviceGlobalStatus
+                                global = applicationGlobalStatus
                             )
                         ) {
                             updatedApplications[applicationId] =
@@ -852,23 +852,25 @@ class WalletService(
                                         updateDate = Instant.now().toString(),
                                         metadata = hashMapOf()
                                     )
-                            servicesUpdatedSuccessfully[applicationId] = requestedStatus
+                            applicationsUpdatedSuccessfully[applicationId] = requestedStatus
                         } else {
-                            servicesWithUpdateFailed[applicationId] = serviceGlobalStatus
+                            applicationsWithUpdateFailed[applicationId] = applicationGlobalStatus
                         }
 
                         Triple(
-                            servicesUpdatedSuccessfully,
-                            servicesWithUpdateFailed,
+                            applicationsUpdatedSuccessfully,
+                            applicationsWithUpdateFailed,
                             updatedApplications
                         )
                     }
                     .map {
-                        (servicesUpdatedSuccessfully, servicesWithUpdateFailed, updatedApplications)
-                        ->
-                        WalletServiceUpdateData(
-                            servicesUpdatedSuccessfully,
-                            servicesWithUpdateFailed,
+                        (
+                            applicationsUpdatedSuccessfully,
+                            applicationsWithUpdateFailed,
+                            updatedApplications) ->
+                        WalletApplicationUpdateData(
+                            applicationsUpdatedSuccessfully,
+                            applicationsWithUpdateFailed,
                             wallet.copy(
                                 applications = updatedApplications.values.toList(),
                                 updateDate = Instant.now()
