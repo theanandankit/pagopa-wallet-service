@@ -330,43 +330,51 @@ class WalletService(
 
                 npgClient
                     .createNpgOrderBuild(
-                        UUID.randomUUID(),
-                        CreateHostedOrderRequest()
-                            .version(CREATE_HOSTED_ORDER_REQUEST_VERSION)
-                            .merchantUrl(merchantUrl)
-                            .order(
-                                Order()
-                                    .orderId(orderId)
-                                    .amount(
-                                        if (isTransactionWithContextualOnboard) amount
-                                        else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
-                                    )
-                                    .currency(CREATE_HOSTED_ORDER_REQUEST_CURRENCY_EUR)
-                                // TODO customerId must be valorised with the one coming from
-                            )
-                            .paymentSession(
-                                PaymentSession()
-                                    .actionType(
-                                        if (isTransactionWithContextualOnboard) ActionType.PAY
-                                        else ActionType.VERIFY
-                                    )
-                                    .recurrence(
-                                        RecurringSettings()
-                                            .action(RecurringAction.CONTRACT_CREATION)
-                                            .contractId(contractId)
-                                            .contractType(RecurringContractType.CIT)
-                                    )
-                                    .amount(
-                                        if (isTransactionWithContextualOnboard) amount
-                                        else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
-                                    )
-                                    .language(CREATE_HOSTED_ORDER_REQUEST_LANGUAGE_ITA)
-                                    .captureType(CaptureType.IMPLICIT)
-                                    .paymentService(paymentMethod.name)
-                                    .resultUrl(resultUrl.toString())
-                                    .cancelUrl(cancelUrl.toString())
-                                    .notificationUrl(notificationUrl.toString())
-                            )
+                        correlationId = UUID.randomUUID(),
+                        createHostedOrderRequest =
+                            CreateHostedOrderRequest()
+                                .version(CREATE_HOSTED_ORDER_REQUEST_VERSION)
+                                .merchantUrl(merchantUrl)
+                                .order(
+                                    Order()
+                                        .orderId(orderId)
+                                        .amount(
+                                            if (isTransactionWithContextualOnboard) amount
+                                            else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
+                                        )
+                                        .currency(CREATE_HOSTED_ORDER_REQUEST_CURRENCY_EUR)
+                                    // TODO customerId must be valorised with the one coming from
+                                )
+                                .paymentSession(
+                                    PaymentSession()
+                                        .actionType(
+                                            if (isTransactionWithContextualOnboard) ActionType.PAY
+                                            else ActionType.VERIFY
+                                        )
+                                        .recurrence(
+                                            RecurringSettings()
+                                                .action(RecurringAction.CONTRACT_CREATION)
+                                                .contractId(contractId)
+                                                .contractType(RecurringContractType.CIT)
+                                        )
+                                        .amount(
+                                            if (isTransactionWithContextualOnboard) amount
+                                            else CREATE_HOSTED_ORDER_REQUEST_VERIFY_AMOUNT
+                                        )
+                                        .language(CREATE_HOSTED_ORDER_REQUEST_LANGUAGE_ITA)
+                                        .captureType(CaptureType.IMPLICIT)
+                                        .paymentService(paymentMethod.name)
+                                        .resultUrl(resultUrl.toString())
+                                        .cancelUrl(cancelUrl.toString())
+                                        .notificationUrl(notificationUrl.toString())
+                                ),
+                        pspId =
+                            when (sessionInputDataDto) {
+                                is SessionInputCardDataDto -> null
+                                is SessionInputPayPalDataDto -> sessionInputDataDto.pspId
+                                else ->
+                                    throw InternalServerErrorException("Unhandled session input")
+                            }
                     )
                     .map { hostedOrderResponse ->
                         val isAPM = paymentMethod.paymentTypeCode != "CP"
