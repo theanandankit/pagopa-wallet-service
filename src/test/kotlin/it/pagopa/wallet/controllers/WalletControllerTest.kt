@@ -28,6 +28,7 @@ import it.pagopa.wallet.services.WalletService
 import it.pagopa.wallet.util.UniqueIdUtils
 import java.net.URI
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.reactor.mono
@@ -37,20 +38,19 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.Mockito
-import org.mockito.kotlin.any
-import org.mockito.kotlin.eq
-import org.mockito.kotlin.given
-import org.mockito.kotlin.mock
+import org.mockito.kotlin.*
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.autoconfigure.web.reactive.WebFluxTest
 import org.springframework.boot.test.mock.mockito.MockBean
 import org.springframework.http.HttpStatus
+import org.springframework.http.HttpStatusCode
 import org.springframework.http.MediaType
 import org.springframework.test.context.TestPropertySource
 import org.springframework.test.web.reactive.server.WebTestClient
 import org.springframework.test.web.reactive.server.expectBody
 import reactor.core.publisher.Flux
 import reactor.core.publisher.Mono
+import reactor.kotlin.test.test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @WebFluxTest(WalletController::class)
@@ -388,7 +388,9 @@ class WalletControllerTest {
         val walletId = WalletId(UUID.randomUUID())
         val walletAuthData = WalletTestUtils.walletCardAuthDataDto()
         val jsonToTest = objectMapper.writeValueAsString(walletAuthData)
+
         given { walletService.findWalletAuthData(walletId) }.willReturn(mono { walletAuthData })
+
         /* test */
         webClient
             .get()
@@ -406,7 +408,9 @@ class WalletControllerTest {
         val walletId = WalletId(UUID.randomUUID())
         val walletAuthData = WalletTestUtils.walletAPMAuthDataDto()
         val jsonToTest = objectMapper.writeValueAsString(walletAuthData)
+
         given { walletService.findWalletAuthData(walletId) }.willReturn(mono { walletAuthData })
+
         /* test */
         webClient
             .get()
@@ -886,4 +890,33 @@ class WalletControllerTest {
                 exception.message
             )
         }
+
+    @Test
+    fun `should return 204 when update last wallet usage successfully`() = runTest {
+        val wallet = WalletTestUtils.walletDocument()
+        val updateRequest =
+            Mono.just(
+                UpdateWalletUsageRequestDto().clientId(ClientIdDto.IO).usageTime(OffsetDateTime.MIN)
+            )
+
+        given { walletService.updateWalletUsage(any(), any(), any()) }.willReturn(Mono.just(wallet))
+
+        walletController
+            .updateWalletUsage(
+                walletId = UUID.fromString(wallet.id),
+                updateWalletUsageRequestDto = updateRequest,
+                exchange = mock()
+            )
+            .test()
+            .assertNext {
+                assertEquals(HttpStatusCode.valueOf(204), it.statusCode)
+                verify(walletService)
+                    .updateWalletUsage(
+                        eq(UUID.fromString(wallet.id)),
+                        eq(ClientIdDto.IO),
+                        eq(OffsetDateTime.MIN.toInstant())
+                    )
+            }
+            .verifyComplete()
+    }
 }
