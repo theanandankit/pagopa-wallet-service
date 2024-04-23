@@ -188,6 +188,15 @@ class MigrationServiceTest {
                     Mono.just(walletPmDocument.createWalletTest(USER_ID, WalletStatusDto.CREATED))
                 }
             given { walletRepository.save(any<Wallet>()) }.willAnswer { Mono.just(it.arguments[0]) }
+            given {
+                    walletRepository
+                        .findByUserIdAndDetailsPaymentInstrumentGatewayIdForWalletStatus(
+                            any(),
+                            any(),
+                            any()
+                        )
+                }
+                .willAnswer { Mono.empty<String>() }
 
             migrationService
                 .updateWalletCardDetails(contractId = contractId, cardDetails = cardDetails)
@@ -306,6 +315,33 @@ class MigrationServiceTest {
                 .verify()
 
             verify(walletRepository, times(0)).save(any())
+        }
+    }
+
+    @Test
+    fun `should throw error when update card details with paymentGatewayId already associated`() {
+        val paymentManagerId = Random().nextLong().toString()
+        val cardDetails = generateCardDetails()
+        mockWalletMigration(paymentManagerId) { walletPmDocument, contractId ->
+            val walletTest = walletPmDocument.createWalletTest(USER_ID, WalletStatusDto.CREATED)
+            given { mongoWalletMigrationRepository.findByContractId(any()) }
+                .willAnswer { Flux.just(walletPmDocument) }
+            given { walletRepository.findById(any<String>()) }.willAnswer { walletTest.toMono() }
+            given {
+                    walletRepository
+                        .findByUserIdAndDetailsPaymentInstrumentGatewayIdForWalletStatus(
+                            any(),
+                            any(),
+                            any()
+                        )
+                }
+                .willAnswer { Mono.just(true) }
+
+            migrationService
+                .updateWalletCardDetails(contractId = contractId, cardDetails = cardDetails)
+                .test()
+                .expectError(MigrationError.WalletAlreadyOnboarded::class.java)
+                .verify()
         }
     }
 
