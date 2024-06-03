@@ -226,7 +226,11 @@ object WalletTestUtils {
                             PAYMENT_INSTRUMENT_GATEWAY_ID.paymentInstrumentGatewayId
                         )
                     } else {
-                        PayPalDetailsDocument(maskedEmail = null, pspId = PSP_ID)
+                        PayPalDetailsDocument(
+                            maskedEmail = null,
+                            pspId = PSP_ID,
+                            pspBusinessName = PSP_BUSINESS_NAME
+                        )
                     },
             )
     }
@@ -358,7 +362,12 @@ object WalletTestUtils {
                         APPLICATION_METADATA_HASHMAP
                     )
                 ),
-            details = PayPalDetailsDocument(maskedEmail = paypalEmail, pspId = PSP_ID),
+            details =
+                PayPalDetailsDocument(
+                    maskedEmail = paypalEmail,
+                    pspId = PSP_ID,
+                    pspBusinessName = PSP_BUSINESS_NAME
+                ),
             clients = clients.entries.associate { it.key.name to it.value.toDocument() },
             version = 0,
             creationDate = creationDate,
@@ -780,6 +789,7 @@ object WalletTestUtils {
         WalletApplicationUpdateRequestDto().applications(listOf(WALLET_SERVICE_1, WALLET_SERVICE_2))
 
     val PSP_ID = UUID.randomUUID().toString()
+    val PSP_BUSINESS_NAME = "pspBusinessName"
 
     val APM_SESSION_CREATE_REQUEST =
         SessionInputPayPalDataDto().apply {
