@@ -11,6 +11,7 @@ import it.pagopa.wallet.WalletTestUtils.APPLICATION_DESCRIPTION
 import it.pagopa.wallet.WalletTestUtils.APPLICATION_DOCUMENT
 import it.pagopa.wallet.WalletTestUtils.APPLICATION_ID
 import it.pagopa.wallet.WalletTestUtils.APPLICATION_METADATA
+import it.pagopa.wallet.WalletTestUtils.BRAND
 import it.pagopa.wallet.WalletTestUtils.CARD_ID_4
 import it.pagopa.wallet.WalletTestUtils.MASKED_EMAIL
 import it.pagopa.wallet.WalletTestUtils.NOTIFY_WALLET_REQUEST_KO_OPERATION_RESULT
@@ -21,6 +22,7 @@ import it.pagopa.wallet.WalletTestUtils.OTHER_WALLET_APPLICATION_ID
 import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID_APM
 import it.pagopa.wallet.WalletTestUtils.PAYMENT_METHOD_ID_CARDS
 import it.pagopa.wallet.WalletTestUtils.PSP_ID
+import it.pagopa.wallet.WalletTestUtils.TEST_FULL_INFO_CLIENTS
 import it.pagopa.wallet.WalletTestUtils.TIMESTAMP
 import it.pagopa.wallet.WalletTestUtils.TRANSACTION_ID
 import it.pagopa.wallet.WalletTestUtils.USER_ID
@@ -2072,6 +2074,11 @@ class WalletServiceTest {
                 it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
 
                 val wallet = walletDocumentStatusValidatedCard()
+
+                val walletClientInfo = HashMap<String, WalletClientDto>()
+                walletClientInfo["unknownClient"] =
+                    WalletClientDto().status(WalletClientStatusDto.DISABLED)
+                walletClientInfo["IO"] = WalletClientDto().status(WalletClientStatusDto.ENABLED)
                 val walletInfoDto =
                     WalletInfoDto()
                         .walletId(UUID.fromString(wallet.id))
@@ -2094,6 +2101,74 @@ class WalletServiceTest {
                                 .expiryDate((wallet.details as CardDetails).expiryDate)
                                 .lastFourDigits((wallet.details as CardDetails).lastFourDigits)
                         )
+                        .clients(walletClientInfo)
+
+                given {
+                        walletRepository.findByIdAndUserId(
+                            eq(WALLET_UUID.value.toString()),
+                            eq(USER_ID.id.toString())
+                        )
+                    }
+                    .willAnswer { Mono.just(wallet) }
+
+                /* test */
+
+                StepVerifier.create(walletService.findWallet(WALLET_UUID.value, USER_ID.id))
+                    .expectNext(walletInfoDto)
+                    .verifyComplete()
+            }
+        }
+    }
+
+    @Test
+    fun `should find wallet document with client info about last usage`() {
+        /* preconditions */
+
+        mockStatic(UUID::class.java, Mockito.CALLS_REAL_METHODS).use {
+            it.`when`<UUID> { UUID.randomUUID() }.thenReturn(mockedUUID)
+
+            mockStatic(Instant::class.java, Mockito.CALLS_REAL_METHODS).use {
+                print("Mocked instant: $mockedInstant")
+                it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
+
+                val wallet = walletDocumentStatusValidatedCard(BRAND, TEST_FULL_INFO_CLIENTS)
+
+                val walletClientInfo = HashMap<String, WalletClientDto>()
+                walletClientInfo["IO"] =
+                    WalletClientDto()
+                        .status(WalletClientStatusDto.ENABLED)
+                        .lastUsage(OffsetDateTime.parse(wallet.clients["IO"]!!.lastUsage))
+                walletClientInfo["unknownClient"] =
+                    WalletClientDto()
+                        .status(WalletClientStatusDto.DISABLED)
+                        .lastUsage(OffsetDateTime.parse(wallet.clients["unknownClient"]?.lastUsage))
+
+                val walletInfoDto =
+                    WalletInfoDto()
+                        .walletId(UUID.fromString(wallet.id))
+                        .status(WalletStatusDto.valueOf(wallet.status))
+                        .paymentMethodId(wallet.paymentMethodId)
+                        .userId(wallet.userId)
+                        .updateDate(OffsetDateTime.parse(wallet.updateDate.toString()))
+                        .creationDate(OffsetDateTime.parse(wallet.creationDate.toString()))
+                        .applications(
+                            wallet.applications.map { application ->
+                                WalletApplicationInfoDto()
+                                    .name(application.id)
+                                    .status(WalletApplicationStatusDto.valueOf(application.status))
+                                    .lastUsage(
+                                        OffsetDateTime.parse(wallet.clients["IO"]?.lastUsage)
+                                    )
+                            }
+                        )
+                        .details(
+                            WalletCardDetailsDto()
+                                .type((wallet.details as CardDetails).type)
+                                .brand((wallet.details as CardDetails).brand)
+                                .expiryDate((wallet.details as CardDetails).expiryDate)
+                                .lastFourDigits((wallet.details as CardDetails).lastFourDigits)
+                        )
+                        .clients(walletClientInfo)
 
                 given {
                         walletRepository.findByIdAndUserId(
@@ -2124,6 +2199,11 @@ class WalletServiceTest {
                 it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
 
                 val wallet = walletDocumentStatusValidatedAPM(MASKED_EMAIL.value)
+                val walletClientInfo = HashMap<String, WalletClientDto>()
+                walletClientInfo["unknownClient"] =
+                    WalletClientDto().status(WalletClientStatusDto.DISABLED)
+                walletClientInfo["IO"] = WalletClientDto().status(WalletClientStatusDto.ENABLED)
+
                 val walletInfoDto =
                     WalletInfoDto()
                         .walletId(UUID.fromString(wallet.id))
@@ -2142,6 +2222,7 @@ class WalletServiceTest {
                         .details(
                             WalletPaypalDetailsDto().maskedEmail(MASKED_EMAIL.value).pspId(PSP_ID)
                         )
+                        .clients(walletClientInfo)
 
                 given {
                         walletRepository.findByIdAndUserId(
@@ -2172,7 +2253,10 @@ class WalletServiceTest {
                 it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
 
                 val wallet = walletDocumentStatusValidatedAPM(null)
-
+                val walletClientInfo = HashMap<String, WalletClientDto>()
+                walletClientInfo["unknownClient"] =
+                    WalletClientDto().status(WalletClientStatusDto.DISABLED)
+                walletClientInfo["IO"] = WalletClientDto().status(WalletClientStatusDto.ENABLED)
                 val walletInfoDto =
                     WalletInfoDto()
                         .walletId(UUID.fromString(wallet.id))
@@ -2189,6 +2273,7 @@ class WalletServiceTest {
                             }
                         )
                         .details(WalletPaypalDetailsDto().maskedEmail(null).pspId(PSP_ID))
+                        .clients(walletClientInfo)
 
                 given {
                         walletRepository.findByIdAndUserId(
@@ -2222,6 +2307,10 @@ class WalletServiceTest {
                 it.`when`<Instant> { Instant.now() }.thenReturn(mockedInstant)
                 val logoUri = "http://logoURI"
                 val wallet = walletDocumentStatusValidatedCard()
+                val walletClientInfo = HashMap<String, WalletClientDto>()
+                walletClientInfo["unknownClient"] =
+                    WalletClientDto().status(WalletClientStatusDto.DISABLED)
+                walletClientInfo["IO"] = WalletClientDto().status(WalletClientStatusDto.ENABLED)
                 val walletInfoDto =
                     WalletInfoDto()
                         .walletId(UUID.fromString(wallet.id))
@@ -2245,6 +2334,7 @@ class WalletServiceTest {
                                 .lastFourDigits((wallet.details as CardDetails).lastFourDigits)
                         )
                         .paymentMethodAsset(URI.create(logoUri))
+                        .clients(walletClientInfo)
 
                 val walletsDto = WalletsDto().addWalletsItem(walletInfoDto)
 
