@@ -68,7 +68,7 @@ microservice-chart:
         OTEL_EXPORTER_OTLP_HEADERS: elastic-otel-token-header
   image:
     repository: pagopauitncoreacr.azurecr.io/pagopawalletservice
-    tag: "0.13.0"
+    tag: "0.13.1"
     pullPolicy: Always
   livenessProbe:
     httpGet:
@@ -179,13 +179,11 @@ microservice-chart:
     name: "pagopa-u-pay-wallet-kv"
     tenantId: "7788edaf-0346-4068-9d79-c868aed15b3d"
   nodeSelector: {}
-
   tolerations:
-  - effect: "NoSchedule"
-    key: "paymentWalletOnly"
-    operator: "Equal"
-    value: "true"
-
+    - effect: "NoSchedule"
+      key: "paymentWalletOnly"
+      operator: "Equal"
+      value: "true"
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
@@ -204,4 +202,3 @@ microservice-chart:
                 aadpodidbinding: pay-wallet-pod-identity
             namespaces: ["pay-wallet"]
             topologyKey: topology.kubernetes.io/zone
-

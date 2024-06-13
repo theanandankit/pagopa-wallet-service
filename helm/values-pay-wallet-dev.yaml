@@ -4,7 +4,7 @@ microservice-chart:
   fullnameOverride: "pagopa-pay-wallet-microservice"
   image:
     repository: pagopaditncoreacr.azurecr.io/pagopawalletservice
-    tag: "0.13.0"
+    tag: "0.13.1"
     pullPolicy: Always
   livenessProbe:
     httpGet:
@@ -120,22 +120,20 @@ microservice-chart:
     deployment:
       image:
         tag: ""
-
   tolerations:
-  - effect: "NoSchedule"
-    key: "paymentWalletOnly"
-    operator: "Equal"
-    value: "true"
-
+    - effect: "NoSchedule"
+      key: "paymentWalletOnly"
+      operator: "Equal"
+      value: "true"
   affinity:
     nodeAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:
         nodeSelectorTerms:
-         - matchExpressions:
-           - key: domain
-             operator: In
-             values:
-             - paywallet
+          - matchExpressions:
+              - key: domain
+                operator: In
+                values:
+                  - paywallet
     podAntiAffinity:
       preferredDuringSchedulingIgnoredDuringExecution:
         - weight: 100
