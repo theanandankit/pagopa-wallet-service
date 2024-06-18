@@ -459,6 +459,7 @@ class MigrationServiceTest {
                     TEST_DEFAULT_CLIENTS.entries.associate { it.key.name to it.value.toDocument() },
                 validationOperationResult = null,
                 validationErrorCode = null,
+                errorReason = null,
                 version = 0,
                 onboardingChannel = OnboardingChannel.IO.toString()
             )

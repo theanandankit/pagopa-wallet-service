@@ -2,6 +2,7 @@ package it.pagopa.wallet.controllers
 
 import it.pagopa.generated.wallet.api.WalletsApi
 import it.pagopa.generated.wallet.model.*
+import it.pagopa.wallet.common.tracing.Tracing
 import it.pagopa.wallet.domain.wallets.UserId
 import it.pagopa.wallet.domain.wallets.WalletApplicationId
 import it.pagopa.wallet.domain.wallets.WalletApplicationStatus
@@ -192,6 +193,23 @@ class WalletController(
                 }
         }
     }
+
+    override fun patchWallet(
+        walletId: UUID,
+        walletStatusPatchRequestDto: Mono<WalletStatusPatchRequestDto>,
+        exchange: ServerWebExchange?
+    ): Mono<ResponseEntity<Void>> =
+        Tracing.customizeSpan(walletStatusPatchRequestDto) {
+                setAttribute(Tracing.WALLET_ID, walletId.toString())
+            }
+            .cast(WalletStatusErrorPatchRequestDto::class.java)
+            .flatMap {
+                walletService.patchWalletStateToError(
+                    WalletId.of(walletId.toString()),
+                    it.details.reason
+                )
+            }
+            .map { ResponseEntity.noContent().build() }
 
     /*
      * @formatter:off
