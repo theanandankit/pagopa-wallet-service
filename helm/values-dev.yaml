@@ -136,3 +136,6 @@
 #    deployment:
 #      image:
 #        tag: ""
+microservice-chart:
+  image:
+    tag: 0.15.4
