@@ -19,9 +19,10 @@ microservice-chart:
         tag: "latest"
         pullPolicy: Always
       envConfig:
+        OTEL_SERVICE_NAME: "pagopa-wallet-service-blue"
         OTEL_RESOURCE_ATTRIBUTES: "service.name=pagopa-wallet-service-blue,deployment.environment=uat"
         EXPIRATION_QUEUE_NAME: pagopa-u-itn-pay-wallet-expiration-queue-b
-      envSecret: { }
+      envSecret: {}
   image:
     repository: pagopauitncoreacr.azurecr.io/pagopawalletservice
     tag: "0.14.2"

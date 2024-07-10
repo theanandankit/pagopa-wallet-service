@@ -114,7 +114,7 @@ data class Wallet(
         return if (allowedStatusesSet.contains(status)) {
             right(this)
         } else {
-            left(WalletConflictStatusException(id, status, allowedStatusesSet))
+            left(WalletConflictStatusException(id, status, allowedStatusesSet, details?.type))
         }
     }
 
