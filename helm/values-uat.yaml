@@ -196,4 +196,4 @@
 #                  - user
 microservice-chart:
   image:
-    tag: 0.22.1
+    tag: 1.0.0
